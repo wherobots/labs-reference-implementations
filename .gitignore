@@ -1,0 +1,15 @@
+# secrets — never commit
+.env
+
+# local state written by scripts/dashboard
+.state.json
+
+# build artifacts
+*.zip
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# os / editor
+.DS_Store

@@ -1,0 +1,109 @@
+{
+  "Comment": "Parent pipeline, callback pattern: submit the Wherobots job with a task token and pause until the job itself reports success/failure over HTTPS. Heartbeats guard the un-catchable (driver OOM, cluster kill): if they stop, States.Timeout fires and the fallback path recovers the run_id by name and polls Wherobots for the real terminal status. Execution input: {script, job_name, runtime, force_fail?}.",
+  "StartAt": "PreviousStep",
+  "States": {
+    "PreviousStep": {
+      "Type": "Pass",
+      "Comment": "Stand-in for whatever really feeds the pipeline. Passes the execution input through untouched.",
+      "Next": "SubmitAndAwaitCallback"
+    },
+    "SubmitAndAwaitCallback": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${SUBMIT_LAMBDA_ARN}",
+        "Payload": {
+          "input.$": "$",
+          "task_token.$": "$$.Task.Token"
+        }
+      },
+      "HeartbeatSeconds": 180,
+      "TimeoutSeconds": 3900,
+      "ResultPath": "$.callback",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.Timeout", "States.HeartbeatTimeout"],
+          "Comment": "Heartbeats stopped or ceiling hit — the job died where no except/finally could run. Recover the run_id and ask Wherobots what happened.",
+          "ResultPath": "$.error",
+          "Next": "FindRun"
+        },
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "Comment": "The job itself posted a failure callback with the traceback as cause.",
+          "ResultPath": "$.error",
+          "Next": "JobFailed"
+        },
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FindRun"
+        }
+      ],
+      "Next": "NextStep"
+    },
+    "FindRun": {
+      "Type": "Task",
+      "Resource": "${FIND_RUN_LAMBDA_ARN}",
+      "Parameters": {
+        "job_name.$": "$.job_name"
+      },
+      "ResultPath": "$.found",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "JobFailed"
+        }
+      ],
+      "Next": "PollUntilComplete"
+    },
+    "PollUntilComplete": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Comment": "Fallback only: the reusable poller determines the run's real terminal status when the callback never arrived.",
+      "Parameters": {
+        "StateMachineArn": "${POLLER_ARN}",
+        "Input": {
+          "run_id.$": "$.found.run_id",
+          "poll_seconds": 30,
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+        }
+      },
+      "OutputPath": "$.Output",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "JobFailed"
+        }
+      ],
+      "Next": "NextStep"
+    },
+    "JobFailed": {
+      "Type": "Fail",
+      "Error": "WherobotsJobFailed",
+      "Cause": "The Wherobots job failed — reported by the job's failure callback, or confirmed by the fallback poll after the callback never arrived."
+    },
+    "NextStep": {
+      "Type": "Pass",
+      "Comment": "Happy path input: {..., callback: <SendTaskSuccess output>}. Fallback path input: the poller's {run_id, status, is_terminal}.",
+      "End": true
+    }
+  }
+}

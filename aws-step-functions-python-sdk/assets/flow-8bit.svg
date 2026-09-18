@@ -1,0 +1,157 @@
+<svg viewBox="0 0 1200 710" width="1200" height="710" xmlns="http://www.w3.org/2000/svg" font-family="'Press Start 2P','IBM Plex Mono',Menlo,monospace" shape-rendering="crispEdges">
+  <!-- night-sky ground -->
+  <rect width="1200" height="710" fill="#1A1C2C"/>
+  <!-- pixel stars -->
+  <g fill="#94B0C2">
+    <rect x="90" y="120" width="4" height="4"/><rect x="1120" y="96" width="4" height="4"/>
+    <rect x="620" y="108" width="4" height="4"/><rect x="200" y="640" width="4" height="4"/>
+    <rect x="1050" y="660" width="4" height="4"/><rect x="60" y="420" width="4" height="4"/>
+    <rect x="1160" y="380" width="4" height="4"/><rect x="380" y="668" width="4" height="4"/>
+  </g>
+
+  <!-- title -->
+  <text x="48" y="46" font-size="22" font-weight="700" fill="#F4F4F4" letter-spacing="2">WHEROBOTS × STEP FUNCTIONS</text>
+  <text x="48" y="72" font-size="11" fill="#41A6F6" letter-spacing="2">THE CALLBACK QUEST · INSERT TOKEN TO CONTINUE</text>
+
+  <!-- lanes -->
+  <rect x="40" y="92" width="1120" height="392" fill="none" stroke="#333C57" stroke-width="4"/>
+  <text x="56" y="118" font-size="10" letter-spacing="3" fill="#94B0C2">WORLD 1: YOUR AWS ACCOUNT</text>
+  <rect x="40" y="504" width="1120" height="150" fill="none" stroke="#333C57" stroke-width="4"/>
+  <text x="56" y="530" font-size="10" letter-spacing="3" fill="#94B0C2">WORLD 2: WHEROBOTS CLOUD</text>
+
+  <!-- pixel panel helper style: outer light border + dark fill -->
+  <!-- PreviousStep -->
+  <rect x="60" y="162" width="150" height="56" fill="#29366F" stroke="#94B0C2" stroke-width="4"/>
+  <text x="135" y="195" font-size="11" text-anchor="middle" fill="#F4F4F4">PREV STEP</text>
+
+  <!-- Submit -->
+  <rect x="260" y="150" width="280" height="80" fill="#0E2A47" stroke="#41A6F6" stroke-width="4"/>
+  <text x="400" y="180" font-size="12" text-anchor="middle" fill="#41A6F6">SUBMIT + AWAIT</text>
+  <text x="400" y="202" font-size="9" text-anchor="middle" fill="#94B0C2">TASK TOKEN · HEARTBEAT 180S</text>
+
+  <!-- NextStep -->
+  <rect x="1010" y="162" width="140" height="56" fill="#123B2A" stroke="#38B764" stroke-width="4"/>
+  <text x="1080" y="188" font-size="10" text-anchor="middle" fill="#38B764">STAGE CLEAR</text>
+  <text x="1080" y="206" font-size="9" text-anchor="middle" fill="#94B0C2">NEXT STEP</text>
+
+  <!-- relay -->
+  <rect x="620" y="270" width="260" height="70" fill="#29366F" stroke="#FFCD75" stroke-width="4"/>
+  <text x="750" y="298" font-size="10" text-anchor="middle" fill="#FFCD75">API GW → RELAY λ</text>
+  <text x="750" y="318" font-size="8.5" text-anchor="middle" fill="#94B0C2">SENDTASK SUCCESS/FAILURE/HEARTBEAT</text>
+
+  <!-- JobFailed -->
+  <rect x="1010" y="270" width="140" height="60" fill="#3B1225" stroke="#FF004D" stroke-width="4"/>
+  <text x="1080" y="295" font-size="11" text-anchor="middle" fill="#FF004D">GAME OVER</text>
+  <text x="1080" y="313" font-size="8.5" text-anchor="middle" fill="#94B0C2">TRACEBACK AS CAUSE</text>
+
+  <!-- FindRun -->
+  <rect x="600" y="390" width="170" height="70" fill="#3A2A16" stroke="#EF7D57" stroke-width="4"/>
+  <text x="685" y="418" font-size="10" text-anchor="middle" fill="#EF7D57">FIND RUN</text>
+  <text x="685" y="438" font-size="8.5" text-anchor="middle" fill="#94B0C2">RUN_ID BY JOB NAME</text>
+
+  <!-- Poller -->
+  <rect x="810" y="390" width="170" height="70" fill="#3A2A16" stroke="#EF7D57" stroke-width="4"/>
+  <text x="895" y="414" font-size="10" text-anchor="middle" fill="#EF7D57">POLL LOOP</text>
+  <text x="895" y="432" font-size="8.5" text-anchor="middle" fill="#94B0C2">CONTINUE? 30S</text>
+  <text x="895" y="448" font-size="8.5" text-anchor="middle" fill="#94B0C2">REUSABLE BOSS</text>
+
+  <!-- Wherobots job -->
+  <rect x="260" y="536" width="230" height="100" fill="#123B2A" stroke="#38B764" stroke-width="4"/>
+  <text x="375" y="566" font-size="11" text-anchor="middle" fill="#38B764">WHEROBOTS JOB</text>
+  <text x="375" y="586" font-size="8.5" text-anchor="middle" fill="#94B0C2">SEDONA ON SPARK</text>
+  <text x="375" y="602" font-size="8.5" text-anchor="middle" fill="#94B0C2">TRY/EXCEPT + HEARTBEAT</text>
+  <!-- pixel hearts (lives) -->
+  <g fill="#FF004D">
+    <path d="M338,612 h6 v4 h4 v-4 h6 v8 h-4 v4 h-4 v4 h-4 v-4 h-4 v-4 h-4 z" transform="translate(0,0)"/>
+    <path d="M338,612 h6 v4 h4 v-4 h6 v8 h-4 v4 h-4 v4 h-4 v-4 h-4 v-4 h-4 z" transform="translate(26,0)"/>
+    <path d="M338,612 h6 v4 h4 v-4 h6 v8 h-4 v4 h-4 v4 h-4 v-4 h-4 v-4 h-4 z" transform="translate(52,0)"/>
+  </g>
+
+  <!-- ══ pixel arrows: thick square-cap lines + square arrowheads ══ -->
+  <!-- Prev -> Submit -->
+  <g stroke="#94B0C2" stroke-width="6" fill="#94B0C2">
+    <line x1="212" y1="190" x2="242" y2="190"/>
+    <path d="M242,180 v20 l14,-10 z"/>
+  </g>
+
+  <!-- success callback -->
+  <g stroke="#38B764" stroke-width="6" fill="#38B764">
+    <line x1="542" y1="178" x2="992" y2="178"/>
+    <path d="M992,168 v20 l14,-10 z"/>
+  </g>
+  <text x="772" y="166" font-size="10" text-anchor="middle" fill="#38B764" letter-spacing="1">SUCCESS CALLBACK ·  1UP</text>
+
+  <!-- submit -> job -->
+  <g stroke="#94B0C2" stroke-width="6" fill="#94B0C2">
+    <line x1="300" y1="232" x2="300" y2="520"/>
+    <path d="M290,520 h20 l-10,14 z"/>
+  </g>
+  <text x="130" y="352" font-size="9" fill="#94B0C2">SUBMIT RUN WITH</text>
+  <text x="130" y="368" font-size="9" fill="#94B0C2">THE TASK TOKEN →</text>
+
+  <!-- job -> relay (staircase up) with gap at amber horizontal -->
+  <g stroke="#41A6F6" stroke-width="6" fill="none">
+    <polyline points="470,536 470,424"/>
+    <polyline points="470,404 470,372 660,372 660,352"/>
+  </g>
+  <path d="M650,352 h20 l-10,-14 z" fill="#41A6F6"/>
+  <text x="480" y="474" font-size="9" fill="#41A6F6">POST TOKEN+RESULT</text>
+
+  <!-- relay -> submit (wake) -->
+  <g stroke="#41A6F6" stroke-width="6" fill="#41A6F6">
+    <polyline points="616,300 520,300 520,244" fill="none"/>
+    <path d="M510,244 h20 l-10,-14 z"/>
+  </g>
+  <text x="526" y="278" font-size="8.5" fill="#41A6F6">WAKES THE</text>
+  <text x="526" y="292" font-size="8.5" fill="#41A6F6">PAUSED STATE</text>
+
+  <!-- failure callback (red) with gap over wake vertical -->
+  <g stroke="#FF004D" stroke-width="6" fill="none">
+    <polyline points="440,232 440,258 508,258"/>
+    <polyline points="532,258 995,258 995,292 998,292"/>
+  </g>
+  <path d="M998,282 v20 l14,-10 z" fill="#FF004D"/>
+  <text x="700" y="246" font-size="9" text-anchor="middle" fill="#FF004D">FAILURE CALLBACK · -1 LIFE</text>
+
+  <!-- hard death (orange, dashed) -->
+  <g stroke="#EF7D57" stroke-width="6" stroke-dasharray="10 8" fill="none">
+    <polyline points="380,232 380,414 586,414"/>
+  </g>
+  <path d="M586,404 v20 l14,-10 z" fill="#EF7D57"/>
+  <text x="88" y="300" font-size="9" fill="#EF7D57">HEARTBEATS STOPPED (OOM) →</text>
+  <text x="88" y="316" font-size="9" fill="#EF7D57">TIMEOUT FIRES · CONTINUE?</text>
+
+  <!-- FindRun -> Poller -->
+  <g stroke="#EF7D57" stroke-width="6" stroke-dasharray="10 8">
+    <line x1="774" y1="425" x2="796" y2="425"/>
+  </g>
+  <path d="M796,415 v20 l14,-10 z" fill="#EF7D57"/>
+
+  <!-- Poller -> NextStep with gap over red horizontal -->
+  <g stroke="#EF7D57" stroke-width="6" stroke-dasharray="10 8" fill="none">
+    <polyline points="940,388 940,270"/>
+    <polyline points="940,246 940,196 992,196"/>
+  </g>
+  <path d="M992,186 v20 l14,-10 z" fill="#EF7D57"/>
+  <text x="932" y="368" font-size="9" text-anchor="end" fill="#EF7D57">CLEARED ↑</text>
+
+  <!-- Poller -> JobFailed -->
+  <g stroke="#FF004D" stroke-width="6" stroke-dasharray="10 8" fill="none">
+    <polyline points="982,442 992,442 992,310 998,310"/>
+  </g>
+  <path d="M998,300 v20 l14,-10 z" fill="#FF004D"/>
+  <text x="976" y="478" font-size="9" text-anchor="end" fill="#FF004D">GAME OVER ↗</text>
+
+  <!-- legend / HUD -->
+  <g font-size="9" fill="#94B0C2">
+    <rect x="48" y="682" width="24" height="6" fill="#38B764"/>
+    <text x="80" y="691">HAPPY PATH</text>
+    <rect x="180" y="682" width="24" height="6" fill="#41A6F6"/>
+    <text x="212" y="691">CALLBACK WIRE</text>
+    <rect x="336" y="682" width="24" height="6" fill="#EF7D57"/>
+    <text x="368" y="691">FALLBACK (HARD DEATH)</text>
+    <rect x="560" y="682" width="24" height="6" fill="#FF004D"/>
+    <text x="592" y="691">FAILURE</text>
+    <text x="690" y="691" fill="#FFCD75">TOKEN = THE CAPABILITY · NO POLLING ON THE HAPPY PATH · PRESS START</text>
+  </g>
+</svg>

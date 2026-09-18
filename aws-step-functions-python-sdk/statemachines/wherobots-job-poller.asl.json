@@ -1,0 +1,55 @@
+{
+  "Comment": "Reusable poller: waits, checks a Wherobots run's status via the SDK, loops until terminal. Input: {run_id, poll_seconds}. Knows nothing about who submitted the job, so any pipeline that produces a run_id can call it.",
+  "StartAt": "Wait",
+  "TimeoutSeconds": 14400,
+  "States": {
+    "Wait": {
+      "Type": "Wait",
+      "SecondsPath": "$.poll_seconds",
+      "Next": "CheckStatus"
+    },
+    "CheckStatus": {
+      "Type": "Task",
+      "Resource": "${CHECK_LAMBDA_ARN}",
+      "Parameters": {
+        "run_id.$": "$.run_id"
+      },
+      "ResultPath": "$.check",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "IsTerminal"
+    },
+    "IsTerminal": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.check.status",
+          "StringEquals": "COMPLETED",
+          "Next": "JobSucceeded"
+        },
+        {
+          "Variable": "$.check.is_terminal",
+          "BooleanEquals": true,
+          "Next": "JobFailed"
+        }
+      ],
+      "Default": "Wait"
+    },
+    "JobSucceeded": {
+      "Type": "Pass",
+      "OutputPath": "$.check",
+      "End": true
+    },
+    "JobFailed": {
+      "Type": "Fail",
+      "Error": "WherobotsJobFailed",
+      "Cause": "Run reached FAILED / CANCELLED / TIMED_OUT"
+    }
+  }
+}
