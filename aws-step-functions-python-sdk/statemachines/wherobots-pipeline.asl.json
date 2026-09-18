@@ -98,8 +98,9 @@
     },
     "JobFailed": {
       "Type": "Fail",
-      "Error": "WherobotsJobFailed",
-      "Cause": "The Wherobots job failed — reported by the job's failure callback, or confirmed by the fallback poll after the callback never arrived."
+      "Comment": "Every route here carries the caught error at $.error (the Catch blocks all use ResultPath $.error), so the execution's terminal output surfaces the real evidence: the job's traceback on a failure callback, or the poller's verdict on the fallback path.",
+      "ErrorPath": "$.error.Error",
+      "CausePath": "$.error.Cause"
     },
     "NextStep": {
       "Type": "Pass",
