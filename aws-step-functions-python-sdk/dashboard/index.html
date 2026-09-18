@@ -379,9 +379,9 @@ footer { border-top: 1px solid var(--rule); padding-top: 18px;
         <path class="gedge" d="M430,55 L735,55"/>
         <path class="gedge" d="M260,95 L260,138"/>
         <path class="gedge" d="M390,165 L433,165"/>
-        <path class="gedge" d="M610,152 L685,152 L685,78 L735,78"/>
+        <path class="gedge" d="M610,150 C 665,138 695,105 735,82"/>
         <path class="gedge" d="M610,178 L735,178"/>
-        <path class="gedge" d="M430,85 L655,85 L655,118 L755,118 L755,136"/>
+        <path class="gedge" d="M430,88 C 555,102 645,122 735,152"/>
         <g id="g-PreviousStep" class="gnode">
           <rect x="20" y="40" width="130" height="50" rx="3"/>
           <text x="85" y="69" font-size="11" text-anchor="middle">PreviousStep</text>
@@ -759,8 +759,8 @@ document.querySelectorAll("ol.files").forEach(list => {
 // Some embedded webviews skip the first paint of a large static inline SVG
 // until something invalidates its layer — promote it once after load.
 requestAnimationFrame(() => {
-  const s = document.querySelector(".diagram-card svg");
-  if (s) s.style.transform = "translateZ(0)";
+  document.querySelectorAll(".diagram-card svg, .graph-card svg")
+    .forEach(s => s.style.transform = "translateZ(0)");
 });
 
 preflight();
