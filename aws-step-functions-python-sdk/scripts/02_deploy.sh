@@ -35,6 +35,7 @@ run() { echo; echo "▶ $*"; "$@"; }
 quiet() { "$@" >/dev/null 2>&1; }
 
 LAMBDA_ROLE="${RESOURCE_PREFIX}-lambda-role"
+RELAY_ROLE="${RESOURCE_PREFIX}-relay-role"
 SFN_ROLE="${RESOURCE_PREFIX}-sfn-role"
 SUBMIT_FN="${RESOURCE_PREFIX}-submit"
 CHECK_FN="${RESOURCE_PREFIX}-check-status"
@@ -82,17 +83,36 @@ run zip -j -q lambdas/find_run.zip lambdas/find_run/handler.py
 
 echo
 echo "── 3/5 Lambda functions ──────────────────────────────────────────────"
-LAMBDA_ENV="Variables={WHEROBOTS_API_KEY=${WHEROBOTS_API_KEY},WHEROBOTS_REGION=${WHEROBOTS_REGION}}"
+# Environment maps are built as JSON so a secret containing '=' or ',' can
+# never reshape the CLI's shorthand-map parsing.
+lambda_env_json() { # [extra_key extra_value]...
+  python3 - "$@" <<'PY'
+import json, os, sys
+variables = {
+    "WHEROBOTS_API_KEY": os.environ["WHEROBOTS_API_KEY"],
+    "WHEROBOTS_REGION": os.environ.get("WHEROBOTS_REGION", "aws-us-west-2"),
+}
+extra = sys.argv[1:]
+variables.update(dict(zip(extra[::2], extra[1::2])))
+print(json.dumps({"Variables": variables}))
+PY
+}
+LAMBDA_ENV="$(lambda_env_json)"
 
-deploy_fn() { # name zipfile timeout memory [env]
-  local name=$1 zipfile=$2 timeout=$3 memory=$4 env="${5:-$LAMBDA_ENV}"
+deploy_fn() { # name zipfile timeout memory [env] [role_arn]
+  local name=$1 zipfile=$2 timeout=$3 memory=$4 env="${5:-$LAMBDA_ENV}" role="${6:-$LAMBDA_ROLE_ARN}"
   local fn_arn="arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:${name}"
   if quiet aws lambda get-function --function-name "$name"; then
     echo "function $name already exists — updating code + config"
     run aws lambda update-function-code --function-name "$name" \
       --zip-file "fileb://$zipfile" --query FunctionArn --output text
     run aws lambda wait function-updated-v2 --function-name "$name"
-    run aws lambda update-function-configuration --function-name "$name" \
+    # NOT routed through run(): the echoed argument list would put the
+    # environment map (secrets included) on stdout, which the dashboard
+    # streams into the browser.
+    echo
+    echo "▶ aws lambda update-function-configuration --function-name $name --timeout $timeout --memory-size $memory --environment (hidden)"
+    aws lambda update-function-configuration --function-name "$name" \
       --timeout "$timeout" --memory-size "$memory" \
       --environment "$env" --query FunctionArn --output text
     run aws lambda tag-resource --resource "$fn_arn" --tags "$LAMBDA_TAGS"
@@ -101,7 +121,7 @@ deploy_fn() { # name zipfile timeout memory [env]
     for attempt in 1 2 3 4 5 6; do
       if aws lambda create-function --function-name "$name" \
           --runtime python3.12 --handler handler.lambda_handler \
-          --role "$LAMBDA_ROLE_ARN" --zip-file "fileb://$zipfile" \
+          --role "$role" --zip-file "fileb://$zipfile" \
           --timeout "$timeout" --memory-size "$memory" \
           --environment "$env" \
           --tags "$LAMBDA_TAGS" \
@@ -115,9 +135,44 @@ deploy_fn() { # name zipfile timeout memory [env]
   run aws lambda wait function-active-v2 --function-name "$name"
 }
 
-# Relay first: the submit Lambda needs the relay's Function URL in its env.
+# The relay gets its own role: it is the only function that may complete
+# tasks (SendTask*), and the other Lambdas take attacker-adjacent input
+# (job names, run ids) — least privilege keeps the blast radius small.
+POLLER_ARN="arn:aws:states:${AWS_REGION}:${ACCOUNT_ID}:stateMachine:${POLLER_SM}"
+PIPELINE_ARN="arn:aws:states:${AWS_REGION}:${ACCOUNT_ID}:stateMachine:${PIPELINE_SM}"
+if quiet aws iam get-role --role-name "$RELAY_ROLE"; then
+  echo "role $RELAY_ROLE already exists — skipping create"
+  run aws iam tag-role --role-name "$RELAY_ROLE" --tags "${IAM_TAGS[@]}"
+else
+  run aws iam create-role --role-name "$RELAY_ROLE" \
+    --assume-role-policy-document "$TRUST_LAMBDA" \
+    --tags "${IAM_TAGS[@]}" \
+    --query Role.Arn --output text
+fi
+run aws iam attach-role-policy --role-name "$RELAY_ROLE" \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+# SendTask* scoped to the two state machines. Verified working live
+# (SendTaskSuccess, SendTaskFailure, and heartbeats all succeeded under
+# this exact scoping in end-to-end runs).
+RELAY_POLICY=$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["states:SendTaskSuccess", "states:SendTaskFailure", "states:SendTaskHeartbeat"],
+    "Resource": ["${PIPELINE_ARN}", "${POLLER_ARN}"]
+  }]
+}
+EOF
+)
+run aws iam put-role-policy --role-name "$RELAY_ROLE" \
+  --policy-name "${RESOURCE_PREFIX}-sendtask-policy" \
+  --policy-document "$RELAY_POLICY"
+RELAY_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${RELAY_ROLE}"
+
+# Relay first: the submit Lambda needs the relay's endpoint URL in its env.
 echo "▶ aws lambda create-function --function-name $RELAY_FN ..."
-deploy_fn "$RELAY_FN" lambdas/callback_relay.zip 30 256 "Variables={NOOP=1}"
+deploy_fn "$RELAY_FN" lambdas/callback_relay.zip 30 256 '{"Variables":{"NOOP":"1"}}' "$RELAY_ROLE_ARN"
 
 echo
 echo "── API Gateway HTTP API for the callback relay ───────────────────────"
@@ -143,25 +198,7 @@ quiet aws lambda add-permission --function-name "$RELAY_FN" \
 CALLBACK_URL="https://${API_ID}.execute-api.${AWS_REGION}.amazonaws.com/"
 echo "callback URL: $CALLBACK_URL"
 
-# The relay must be allowed to complete tasks on the pipeline state machine.
-POLLER_ARN="arn:aws:states:${AWS_REGION}:${ACCOUNT_ID}:stateMachine:${POLLER_SM}"
-PIPELINE_ARN="arn:aws:states:${AWS_REGION}:${ACCOUNT_ID}:stateMachine:${PIPELINE_SM}"
-RELAY_POLICY=$(cat <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["states:SendTaskSuccess", "states:SendTaskFailure", "states:SendTaskHeartbeat"],
-    "Resource": ["${PIPELINE_ARN}", "${POLLER_ARN}"]
-  }]
-}
-EOF
-)
-run aws iam put-role-policy --role-name "$LAMBDA_ROLE" \
-  --policy-name "${RESOURCE_PREFIX}-sendtask-policy" \
-  --policy-document "$RELAY_POLICY"
-
-SUBMIT_ENV="Variables={WHEROBOTS_API_KEY=${WHEROBOTS_API_KEY},WHEROBOTS_REGION=${WHEROBOTS_REGION},CALLBACK_URL=${CALLBACK_URL}}"
+SUBMIT_ENV="$(lambda_env_json CALLBACK_URL "$CALLBACK_URL")"
 echo "▶ aws lambda create-function --function-name $SUBMIT_FN ... (env vars hidden)"
 deploy_fn "$SUBMIT_FN" lambdas/submit.zip 120 512 "$SUBMIT_ENV"
 echo "▶ aws lambda create-function --function-name $CHECK_FN ... (env vars hidden)"

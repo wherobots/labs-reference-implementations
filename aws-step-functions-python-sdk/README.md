@@ -31,8 +31,8 @@ command as it executes.
 - **Why try/except/finally alone can't make this safe**: a driver OOM or cluster
   kill ends the process mid-instruction — no `except` runs, no `finally` runs, no
   callback is ever sent. The job therefore also posts a **heartbeat every 60 s**;
-  the task sets `HeartbeatSeconds: 180`, so a dead job surfaces as
-  `States.Timeout` within ~3 minutes even though it never said goodbye.
+  the task sets `HeartbeatSeconds: 600` (sized to exceed worst-case runtime provisioning,
+  so a healthy cold start never false-positives), and a dead job surfaces as `States.Timeout` even though it never said goodbye.
 - **The fallback path**: on that timeout, a `Catch` routes to `FindRun`
   (recovers the `run_id` from the deterministic job name via
   `WherobotsJob.list_runs`) and then to the **reusable poller state machine**,
@@ -42,7 +42,7 @@ command as it executes.
 ```mermaid
 flowchart LR
     subgraph pipeline["wherobots-sfn-ref-pipeline"]
-        A[PreviousStep] --> B["SubmitAndAwaitCallback<br/>(waitForTaskToken,<br/>HeartbeatSeconds 180)"]
+        A[PreviousStep] --> B["SubmitAndAwaitCallback<br/>(waitForTaskToken,<br/>HeartbeatSeconds 600)"]
         B -- "success callback" --> D[NextStep]
         B -- "failure callback" --> FF[JobFailed]
         B -- "heartbeats stopped<br/>(OOM / hard death)" --> FR["FindRun<br/>(list_runs by job name)"]
@@ -138,7 +138,7 @@ python3 scripts/01_upload_job.py   # upload job/hello_wherobots_job.py, save s3:
    state output and **NextStep** runs immediately. **Soft failure**: the failure
    callback fails the task with the traceback as cause → `JobFailed`.
    **Hard death (OOM)**: heartbeats stop → `States.Timeout` after
-   `HeartbeatSeconds: 180` → **FindRun** → **PollUntilComplete** (the reusable
+   `HeartbeatSeconds: 600` → **FindRun** → **PollUntilComplete** (the reusable
    poller) reports the run's true terminal status.
 
 ### Test modes (dashboard dropdown, or `force_fail` / `hard_fail` in the execution input)
@@ -147,7 +147,7 @@ python3 scripts/01_upload_job.py   # upload job/hello_wherobots_job.py, save s3:
 |------|-------------------|----------------|
 | normal | counts buildings, posts success | instant wake on the success callback |
 | soft failure | raises `RuntimeError` → `except` posts a failure callback | task fails immediately with the job's traceback as cause |
-| hard death (OOM sim) | `os._exit(137)` mid-run — no callback, heartbeats die with the process | `HeartbeatSeconds` timeout (≤3 min) → FindRun → poller reports `FAILED`; ~6–8 min total |
+| hard death (OOM sim) | `os._exit(137)` mid-run — no callback, heartbeats die with the process | `HeartbeatSeconds` timeout (≤10 min) → FindRun → poller reports `FAILED`; ~8–15 min total |
 
 ### Failure-mode coverage
 

@@ -30,10 +30,17 @@ import urllib.request
 def parse_opts(argv):
     opts = {}
     i = 1
-    while i < len(argv) - 1:
+    while i < len(argv):
         if argv[i].startswith("--"):
-            opts[argv[i]] = argv[i + 1]
-            i += 2
+            # A flag followed by a value consumes it; a trailing or bare flag
+            # (no value, or another flag next) is recorded as "1" instead of
+            # being silently dropped.
+            if i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+                opts[argv[i]] = argv[i + 1]
+                i += 2
+            else:
+                opts[argv[i]] = "1"
+                i += 1
         else:
             i += 1
     return opts

@@ -162,20 +162,6 @@ def execution_digest(arn):
     }
 
 
-def recent_executions(limit=25):
-    state = load_state()
-    if not state.get("pipeline_arn"):
-        return []
-    items = aws([
-        "stepfunctions", "list-executions",
-        "--state-machine-arn", state["pipeline_arn"],
-        "--max-items", str(limit),
-    ]).get("executions", [])
-    return [
-        {"name": e.get("name"), "status": e.get("status"),
-         "startDate": str(e.get("startDate", "")), "stopDate": str(e.get("stopDate", ""))}
-        for e in items
-    ]
 
 
 def poller_digest(child_arn):
@@ -248,11 +234,6 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        elif url.path == "/api/executions":
-            try:
-                self.send_json({"executions": recent_executions()})
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
         elif url.path == "/api/execution":
             arn = parse_qs(url.query).get("arn", [""])[0]
             try:
@@ -291,6 +272,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": f"unknown script '{script}'"}, 400)
         if not _exec_lock.acquire(blocking=False):
             return self.send_json({"error": "another script is already running"}, 409)
+        proc = None
         try:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -309,6 +291,11 @@ class Handler(BaseHTTPRequestHandler):
         except BrokenPipeError:
             pass  # browser navigated away; the script keeps running to completion
         finally:
+            # Hold the lock until the child actually exits: a closed browser
+            # tab must not allow a second lifecycle script to run concurrently
+            # with the one still finishing.
+            if proc is not None:
+                proc.wait()
             _exec_lock.release()
 
     def sse(self, data, event=None):

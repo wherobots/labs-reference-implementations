@@ -247,7 +247,7 @@ footer { border-top: 1px solid var(--rule); padding-top: 18px;
 
         <rect x="205" y="48" width="215" height="68" rx="2" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
         <text x="312" y="74" font-size="11.5" text-anchor="middle" fill="var(--ink)" font-weight="600">SubmitAndAwaitCallback</text>
-        <text x="312" y="92" font-size="9.5" text-anchor="middle" fill="var(--ink-mid)">waitForTaskToken · heartbeat 180s</text>
+        <text x="312" y="92" font-size="9.5" text-anchor="middle" fill="var(--ink-mid)">waitForTaskToken · heartbeat 600s</text>
 
         <rect x="820" y="60" width="120" height="44" rx="2" fill="var(--ok-soft)" stroke="var(--ok)"/>
         <text x="880" y="86" font-size="11.5" text-anchor="middle" fill="var(--ink)">NextStep</text>
@@ -507,9 +507,9 @@ const MODE_NOTES = {
   hard: `<span class="lbl">What the hard-death sim shows</span>
      The job calls <code>os._exit()</code> mid-run — no <code>except</code>, no <code>finally</code>,
      no callback, exactly like a driver OOM. Heartbeats stop with the process,
-     <code>HeartbeatSeconds: 180</code> fires up to ~3 minutes later, and the amber fallback blocks
+     <code>HeartbeatSeconds: 600</code> fires up to ~10 minutes later, and the amber fallback blocks
      appear as FindRun recovers the run and the poller reports the real <code>FAILED</code> status.
-     Expect the whole demonstration to take 6–8 minutes.`,
+     Expect the whole demonstration to take 8–15 minutes.`,
 };
 function updateModeNote() { $("mode-note").innerHTML = MODE_NOTES[$("run-mode").value]; }
 $("run-mode").onchange = updateModeNote;

@@ -46,6 +46,11 @@ run aws iam delete-role-policy --role-name "${RESOURCE_PREFIX}-lambda-role" \
 run aws iam detach-role-policy --role-name "${RESOURCE_PREFIX}-lambda-role" \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 run aws iam delete-role --role-name "${RESOURCE_PREFIX}-lambda-role"
+run aws iam delete-role-policy --role-name "${RESOURCE_PREFIX}-relay-role" \
+  --policy-name "${RESOURCE_PREFIX}-sendtask-policy"
+run aws iam detach-role-policy --role-name "${RESOURCE_PREFIX}-relay-role" \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+run aws iam delete-role --role-name "${RESOURCE_PREFIX}-relay-role"
 run aws iam delete-role-policy --role-name "${RESOURCE_PREFIX}-sfn-role" \
   --policy-name "${RESOURCE_PREFIX}-sfn-policy"
 run aws iam delete-role --role-name "${RESOURCE_PREFIX}-sfn-role"

@@ -14,7 +14,7 @@ pauses on a one-time task token. The job itself reports the result over HTTPS
 2. **Soft failure:** the job's `except` block posts a failure callback carrying
    the Python traceback → pipeline ends at JobFailed.
 3. **Hard death (OOM/kill):** the job dies without sending anything; its
-   60-second heartbeats stop; a 180-second heartbeat timeout fires → FindRun
+   60-second heartbeats stop; a 600-second heartbeat timeout fires → FindRun
    recovers the run ID from the job name → a reusable poller asks Wherobots
    for the true status → NextStep (if COMPLETED) or JobFailed (if FAILED).
 
@@ -41,7 +41,7 @@ boxes for return arrows.
 | id | Label | Sublabel | Color role |
 |----|-------|----------|------------|
 | prev | PreviousStep | — | neutral gray |
-| submit | SubmitAndAwaitCallback | waitForTaskToken · heartbeat 180s | primary teal, the hero box |
+| submit | SubmitAndAwaitCallback | waitForTaskToken · heartbeat 600s | primary teal, the hero box |
 | next | NextStep | receives the callback output | success green |
 | failed | JobFailed | traceback as cause | failure red |
 | relay | API Gateway → relay λ | SendTaskSuccess / Failure / Heartbeat | neutral, teal-adjacent |
@@ -115,7 +115,7 @@ QUEST · INSERT TOKEN TO CONTINUE". Legend caption ends "PRESS START".
 > "YOUR AWS ACCOUNT · STEP FUNCTIONS + API GATEWAY" on top and "WHEROBOTS
 > CLOUD" below. Top lane, upper row: box "PreviousStep" with an arrow into a
 > prominent teal box "SubmitAndAwaitCallback (waitForTaskToken · heartbeat
-> 180s)", and far right a green box "NextStep". A bold teal arrow labeled
+> 600s)", and far right a green box "NextStep". A bold teal arrow labeled
 > "success callback" runs from SubmitAndAwaitCallback straight to NextStep.
 > Below the right side, a red box "JobFailed (traceback as cause)" receives a
 > red arrow from SubmitAndAwaitCallback labeled "failure callback (traceback
