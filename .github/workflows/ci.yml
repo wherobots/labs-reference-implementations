@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python syntax
+        run: |
+          python -m compileall -q $(git ls-files '*.py')
+
+      - name: Bash syntax
+        run: |
+          for f in $(git ls-files '*.sh'); do bash -n "$f"; done
+
+      - name: State machine definitions are valid JSON
+        run: |
+          for f in $(git ls-files '*.asl.json'); do python -m json.tool "$f" > /dev/null; done
+
+      - name: No secrets or internal references committed
+        run: |
+          ! git grep -nE "wbk_[A-Za-z0-9]|AKIA[0-9A-Z]{16}|api\.hubapi|hooks\.slack\.com" -- ':!*.md' || (echo "potential secret or internal reference found" && exit 1)
+
+      - name: Required Labs files present
+        run: |
+          test -f LICENSE && test -f CONTRIBUTING.md && test -f README.md
+          grep -q "Wherobots Labs projects were developed for customers to use" README.md

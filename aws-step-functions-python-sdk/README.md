@@ -11,6 +11,15 @@ command as it executes.
 > Reference / learning tool, not a production build-out: it favors visible,
 > plain AWS CLI calls over templates and abstraction.
 
+> **Wherobots Labs.** Wherobots Labs projects were developed for customers to
+> use. However test coverage is limited, and you are responsible for ensuring
+> the project is ready for your use case. Wherobots does not make any
+> guarantees about production readiness but you are free to adopt the
+> software, contribute to its success, and fork the projects.
+> Any issues discovered through the use of this project should be filed as
+> issues on the GitHub Repo. They will be reviewed as time permits, but there
+> are no formal SLAs for support.
+
 ![Process flow: the callback pattern with a poller fallback](assets/flow-typical.svg)
 
 *(An [8-bit arcade version](assets/flow-8bit.svg) of the same flow exists for less serious venues.)*
