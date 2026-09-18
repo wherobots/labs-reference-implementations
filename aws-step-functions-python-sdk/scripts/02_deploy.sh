@@ -285,16 +285,27 @@ deploy_sm() { # name asl-file
       --query updateDate --output text
     run aws stepfunctions tag-resource --resource-arn "$arn" --tags "${SFN_TAGS[@]}"
   else
+    # Track a confirmed create: without this, an exhausted retry loop would
+    # fall through with status 0 and the deploy would declare victory with no
+    # state machine behind it.
+    local created="" out=""
     for attempt in 1 2 3 4 5 6; do
-      if aws stepfunctions create-state-machine --name "$name" \
+      if out=$(aws stepfunctions create-state-machine --name "$name" \
           --definition "$(render "$asl")" --role-arn "$SFN_ROLE_ARN" \
           --tags "${SFN_TAGS[@]}" \
-          --query stateMachineArn --output text 2>/dev/null; then
+          --query stateMachineArn --output text 2>&1); then
+        echo "$out"
+        created=yes
         break
       fi
       echo "  waiting for IAM role propagation (attempt $attempt) ..."
       sleep 10
     done
+    if [ -z "$created" ]; then
+      echo "✗ failed to create state machine $name after 6 attempts; last error:" >&2
+      echo "$out" >&2
+      exit 1
+    fi
   fi
 }
 
