@@ -44,8 +44,9 @@ FIND_FN="${RESOURCE_PREFIX}-find-run"
 POLLER_SM="${RESOURCE_PREFIX}-job-poller"
 PIPELINE_SM="${RESOURCE_PREFIX}-pipeline"
 
-# Asset tags — ManagedBy=claude-code is what the aws-asset-catalog ledger keys
-# on for `aws resourcegroupstaggingapi get-resources` reconciliation.
+# Asset tags — every resource this script creates carries the same four tags,
+# so everything is identifiable (e.g. via `aws resourcegroupstaggingapi
+# get-resources`) and sweepable by the teardown script.
 TAG_PROJECT="aws-step-functions-python-sdk"
 TAG_CREATED_AT="$(date -u +%Y-%m-%d)"
 TAG_TEARDOWN_BY="$(python3 -c 'import datetime as d; print((d.date.today() + d.timedelta(days=30)).isoformat())')"

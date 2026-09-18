@@ -106,9 +106,6 @@ def main():
         if opts.get("--fail"):
             raise RuntimeError("forced failure (--fail) to exercise the failure callback")
         output = run_job()
-        if callback:
-            post(url, {"task_token": token, "action": "success", "output": output})
-        print("hello_wherobots_job: SUCCESS")
     except Exception as exc:
         if callback:
             try:
@@ -121,6 +118,20 @@ def main():
             except Exception:
                 pass  # relay unreachable — the heartbeat timeout is the backstop
         raise
+    else:
+        # Success delivery lives OUTSIDE the work try: a transient relay error
+        # here must never be re-reported as a job failure. If the post fails,
+        # exit successfully anyway — heartbeats stop with the process, the
+        # heartbeat timeout fires, and the fallback poller observes the run's
+        # real COMPLETED status.
+        if callback:
+            try:
+                post(url, {"task_token": token, "action": "success", "output": output})
+            except Exception:
+                print("hello_wherobots_job: work succeeded but the success callback "
+                      "could not be delivered — the fallback poller will report "
+                      "COMPLETED", file=sys.stderr)
+        print("hello_wherobots_job: SUCCESS")
     finally:
         stop_heartbeats.set()
 

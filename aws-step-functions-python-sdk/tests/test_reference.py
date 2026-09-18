@@ -101,6 +101,59 @@ class TestPollerDefinition(unittest.TestCase):
                     self.assertIn(target, names, f"{name} -> {target}")
 
 
+class TestCallbackDelivery(unittest.TestCase):
+    """The failure contract: a failed success-callback delivery must never be
+    re-reported as a job failure (the fallback poller owns that case), while a
+    failed job must post a failure callback with the traceback."""
+
+    def setUp(self):
+        self.posts = []
+        self.orig_argv = sys.argv
+        self.orig_post = hello_wherobots_job.post
+        self.orig_run_job = hello_wherobots_job.run_job
+        sys.argv = ["job", "--task-token", "tok", "--callback-url", "https://relay/cb"]
+
+    def tearDown(self):
+        sys.argv = self.orig_argv
+        hello_wherobots_job.post = self.orig_post
+        hello_wherobots_job.run_job = self.orig_run_job
+
+    def test_success_delivery_failure_is_not_reported_as_job_failure(self):
+        hello_wherobots_job.run_job = lambda: {"building_count": 1}
+
+        def flaky_post(url, payload):
+            self.posts.append(payload)
+            if payload["action"] == "success":
+                raise OSError("relay unreachable")
+
+        hello_wherobots_job.post = flaky_post
+        hello_wherobots_job.main()  # must not raise
+        actions = [p["action"] for p in self.posts if p["action"] != "heartbeat"]
+        self.assertEqual(actions, ["success"])
+        self.assertNotIn("failure", actions)
+
+    def test_job_failure_posts_failure_callback_with_traceback_and_reraises(self):
+        def boom():
+            raise RuntimeError("bad data")
+
+        hello_wherobots_job.run_job = boom
+        hello_wherobots_job.post = lambda url, payload: self.posts.append(payload)
+        with self.assertRaises(RuntimeError):
+            hello_wherobots_job.main()
+        failures = [p for p in self.posts if p["action"] == "failure"]
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0]["error"], "RuntimeError")
+        self.assertIn("bad data", failures[0]["cause"])
+
+    def test_happy_path_posts_exactly_one_success(self):
+        hello_wherobots_job.run_job = lambda: {"building_count": 1084}
+        hello_wherobots_job.post = lambda url, payload: self.posts.append(payload)
+        hello_wherobots_job.main()
+        actions = [p["action"] for p in self.posts if p["action"] != "heartbeat"]
+        self.assertEqual(actions, ["success"])
+        self.assertEqual(self.posts[-1]["output"], {"building_count": 1084})
+
+
 class TestDrainBeforeWait(unittest.TestCase):
     def test_abandoned_reader_does_not_deadlock(self):
         """Regression test for the exec-lock deadlock: a child writing far past

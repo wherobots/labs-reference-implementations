@@ -32,7 +32,7 @@ jobs:
 
       - name: No secrets or internal references committed
         run: |
-          ! git grep -nE "wbk_[A-Za-z0-9]|AKIA[0-9A-Z]{16}|api\.hubapi|hooks\.slack\.com" -- ':!*.md' || (echo "potential secret or internal reference found" && exit 1)
+          ! git grep -nE "wbk_[A-Za-z0-9]|AKIA[0-9A-Z]{16}|api\.hubapi|hooks\.slack\.com|aws-asset-catalog" -- ':!*.md' ':!.github/workflows/ci.yml' || (echo "potential secret or internal reference found" && exit 1)
 
       - name: Required Labs files present
         run: |
