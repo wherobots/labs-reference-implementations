@@ -147,7 +147,7 @@ python3 scripts/01_upload_job.py   # upload job/hello_wherobots_job.py, save s3:
 |------|-------------------|----------------|
 | normal | counts buildings, posts success | instant wake on the success callback |
 | soft failure | raises `RuntimeError` → `except` posts a failure callback | task fails immediately with the job's traceback as cause |
-| hard death (OOM sim) | `os._exit(137)` mid-run — no callback, heartbeats die with the process | `HeartbeatSeconds` timeout (≤10 min) → FindRun → poller reports `FAILED`; ~8–15 min total |
+| hard death (OOM sim) | `os._exit(137)` mid-run — no callback, heartbeats die with the process | `HeartbeatSeconds` timeout (≤10 min) → FindRun → poller reports `FAILED`; verified live: 10m44s end to end |
 
 ### Failure-mode coverage
 
