@@ -15,7 +15,23 @@ for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_PROFILE; 
   [ -z "${!v:-}" ] && unset "$v"
 done
 
-run() { echo; echo "▶ $*"; "$@" || echo "  (already gone — ok)"; }
+# Only a confirmed not-found is "already gone". Any other failure
+# (AccessDenied, dependency conflict, throttling) is reported loudly and
+# marks the teardown as incomplete — the resource may still exist and bill.
+FAILED=0
+run() {
+  echo; echo "▶ $*"
+  local out
+  if out=$("$@" 2>&1); then
+    [ -n "$out" ] && echo "$out"
+  elif echo "$out" | grep -qiE "NoSuchEntity|ResourceNotFound|NotFoundException|StateMachineDoesNotExist|Function not found|does not exist|cannot be found"; then
+    echo "  (already gone — ok)"
+  else
+    echo "$out"
+    echo "  ✗ step failed — this resource may still exist"
+    FAILED=1
+  fi
+}
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
@@ -54,6 +70,13 @@ run aws iam delete-role --role-name "${RESOURCE_PREFIX}-relay-role"
 run aws iam delete-role-policy --role-name "${RESOURCE_PREFIX}-sfn-role" \
   --policy-name "${RESOURCE_PREFIX}-sfn-policy"
 run aws iam delete-role --role-name "${RESOURCE_PREFIX}-sfn-role"
+
+if [ "$FAILED" -ne 0 ]; then
+  echo
+  echo "❌ Teardown INCOMPLETE — one or more delete calls failed (see above)."
+  echo "   Local state is kept so a re-run can finish the job."
+  exit 1
+fi
 
 echo
 echo "── Local state ────────────────────────────────────────────────────────"
