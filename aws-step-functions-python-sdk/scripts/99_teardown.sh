@@ -23,7 +23,9 @@ run() {
   echo; echo "▶ $*"
   local out
   if out=$("$@" 2>&1); then
-    [ -n "$out" ] && echo "$out"
+    # (plain 'test && echo' would return falsy on empty output and, under
+    # set -e, abort the script after a perfectly successful delete)
+    if [ -n "$out" ]; then echo "$out"; fi
   elif echo "$out" | grep -qiE "NoSuchEntity|ResourceNotFound|NotFoundException|StateMachineDoesNotExist|Function not found|does not exist|cannot be found"; then
     echo "  (already gone — ok)"
   else
