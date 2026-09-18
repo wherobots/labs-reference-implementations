@@ -303,8 +303,13 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             # Hold the lock until the child actually exits: a closed browser
             # tab must not allow a second lifecycle script to run concurrently
-            # with the one still finishing.
+            # with the one still finishing. Drain stdout to EOF first — after
+            # a BrokenPipeError nothing else reads the pipe, and once the OS
+            # pipe buffer fills the child blocks on write(), so a bare wait()
+            # here would hold the lock forever.
             if proc is not None:
+                for _ in proc.stdout:
+                    pass
                 proc.wait()
             _exec_lock.release()
 
