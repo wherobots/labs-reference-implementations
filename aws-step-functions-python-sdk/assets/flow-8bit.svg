@@ -27,7 +27,7 @@
   <!-- Submit -->
   <rect x="260" y="150" width="280" height="80" fill="#0E2A47" stroke="#41A6F6" stroke-width="4"/>
   <text x="400" y="180" font-size="12" text-anchor="middle" fill="#41A6F6">SUBMIT + AWAIT</text>
-  <text x="400" y="202" font-size="9" text-anchor="middle" fill="#94B0C2">TASK TOKEN · HEARTBEAT 600S</text>
+  <text x="400" y="202" font-size="9" text-anchor="middle" fill="#94B0C2">TASK TOKEN · HEARTBEAT 240S</text>
 
   <!-- NextStep -->
   <rect x="1010" y="162" width="140" height="56" fill="#123B2A" stroke="#38B764" stroke-width="4"/>

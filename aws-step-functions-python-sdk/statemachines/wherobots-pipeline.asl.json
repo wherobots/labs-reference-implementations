@@ -17,8 +17,8 @@
           "task_token.$": "$$.Task.Token"
         }
       },
-      "Comment": "HeartbeatSeconds counts from task entry, and the job's first 60s heartbeat cannot arrive until Wherobots has provisioned the runtime and started Python (commonly 3-5 minutes on a cold tiny runtime). 600s covers worst-case provisioning; a hard death is still detected within this window of the last heartbeat.",
-      "HeartbeatSeconds": 600,
+      "Comment": "HeartbeatSeconds counts from task entry, and the job's first 60s heartbeat cannot arrive until Wherobots has provisioned the runtime and started Python. 240s covers typical provisioning; on a rare slower cold start the timeout routes to the fallback poller, which finds the run healthy and still reaches NextStep with status COMPLETED — just slower. Raise this if your runtimes cold-start slower than four minutes.",
+      "HeartbeatSeconds": 240,
       "TimeoutSeconds": 3900,
       "ResultPath": "$.callback",
       "Retry": [

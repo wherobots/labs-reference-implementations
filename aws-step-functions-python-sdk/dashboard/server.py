@@ -113,7 +113,7 @@ def execution_digest(arn):
 
     stages = {name: "pending" for name in PARENT_STAGES}
     stage_times = {}  # name -> {"entered": iso, "exited": iso|None} for the run Gantt
-    child_arn = run_id = None
+    child_arn = run_id = heartbeat_timeout_at = None
     for ev in history:
         etype = ev.get("type", "")
         if etype in ("TaskStateEntered", "PassStateEntered", "FailStateEntered"):
@@ -132,12 +132,21 @@ def execution_digest(arn):
                     run_id = json.loads(detail.get("output", "{}")).get("found", {}).get("run_id")
                 except (ValueError, AttributeError):
                     pass
+        elif etype == "TaskTimedOut":
+            # The heartbeat (or task) timeout firing — the moment silence
+            # became the signal. Surfaced so the UI can demarcate it.
+            heartbeat_timeout_at = str(ev.get("timestamp", ""))
         elif etype == "TaskSubmitted":
             try:
                 out = json.loads(ev["taskSubmittedEventDetails"].get("output", "{}"))
                 child_arn = out.get("ExecutionArn", child_arn)
             except (ValueError, KeyError):
                 pass
+
+    if heartbeat_timeout_at and stages.get("SubmitAndAwaitCallback") in ("active", "succeeded"):
+        # The callback task ended by timeout, not by a callback — show it as
+        # such rather than letting the Catch-exit read as success.
+        stages["SubmitAndAwaitCallback"] = "timedout"
 
     if desc.get("status") in ("FAILED", "TIMED_OUT", "ABORTED"):
         for name, st in stages.items():
@@ -157,6 +166,7 @@ def execution_digest(arn):
         "output": json.loads(desc["output"]) if desc.get("output") else None,
         "stages": stages,
         "stage_times": stage_times,
+        "heartbeat_timeout_at": heartbeat_timeout_at,
         "run_id": run_id,
         "poller": poller,
     }
