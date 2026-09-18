@@ -560,7 +560,7 @@ const MODE_NOTES = {
      The job counts Overture buildings, then posts a <b>success callback</b> — the paused state
      wakes instantly and NextStep receives <code>{"building_count": 1084}</code>. The fallback
      stages never run: the timeline stays one teal group ending in green, and that absence is
-     the point. Typically 3–5 minutes, almost all of it runtime provisioning.`,
+     the point. Typically 1–3 minutes end to end — the slowest job start observed in testing was 52 s.`,
   soft: `<span class="lbl">What the soft-failure test shows</span>
      The job raises a <code>RuntimeError</code> on purpose. Its <code>except</code> block posts a
      <b>failure callback</b> carrying the full Python traceback, and the execution fails within
