@@ -31,7 +31,7 @@ command as it executes.
 - **Why try/except/finally alone can't make this safe**: a driver OOM or cluster
   kill ends the process mid-instruction — no `except` runs, no `finally` runs, no
   callback is ever sent. The job therefore also posts a **heartbeat every 60 s**;
-  the task sets `HeartbeatSeconds: 240` (sized above typical runtime provisioning;
+  the task sets `HeartbeatSeconds: 240` (evidence-based: the slowest observed job start in testing was 52s, so 240 carries >4x headroom;
   a rare slower cold start falls back to the poller, which still reaches NextStep with COMPLETED), and a dead job surfaces as `States.Timeout` even though it never said goodbye.
 - **The fallback path**: on that timeout, a `Catch` routes to `FindRun`
   (recovers the `run_id` from the deterministic job name via
