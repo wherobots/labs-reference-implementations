@@ -1,0 +1,109 @@
+<svg viewBox="0 0 1200 710" width="1200" height="710" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono','SF Mono',Menlo,monospace">
+  <rect width="1200" height="710" fill="#F4F6F7"/>
+
+  <!-- title -->
+  <text x="48" y="46" font-size="25" font-weight="700" fill="#101A1E" font-family="'IBM Plex Sans Condensed','Helvetica Neue',Arial,sans-serif">Wherobots Jobs from AWS Step Functions</text>
+  <text x="48" y="70" font-size="12.5" fill="#5B6577">The callback pattern with a poller fallback: the job posts its own result; heartbeats cover what it cannot.</text>
+
+  <!-- lanes -->
+  <rect x="40" y="92" width="1120" height="392" fill="#FFFFFF" stroke="#D6DEE1" stroke-dasharray="4 4"/>
+  <text x="56" y="116" font-size="10.5" letter-spacing="2" fill="#6B7C84">YOUR AWS ACCOUNT · STEP FUNCTIONS + API GATEWAY</text>
+  <rect x="40" y="504" width="1120" height="150" fill="#FFFFFF" stroke="#D6DEE1" stroke-dasharray="4 4"/>
+  <text x="56" y="528" font-size="10.5" letter-spacing="2" fill="#6B7C84">WHEROBOTS CLOUD</text>
+
+  <!-- boxes: top row -->
+  <rect x="60" y="162" width="150" height="56" rx="2" fill="#EDF1F2" stroke="#3D4C53" stroke-width="1.5"/>
+  <text x="135" y="195" font-size="13" text-anchor="middle" fill="#101A1E">PreviousStep</text>
+
+  <rect x="260" y="150" width="280" height="80" rx="2" fill="#D7E8EA" stroke="#0E5B69" stroke-width="2"/>
+  <text x="400" y="182" font-size="14" font-weight="700" text-anchor="middle" fill="#101A1E">SubmitAndAwaitCallback</text>
+  <text x="400" y="202" font-size="11" text-anchor="middle" fill="#3D4C53">waitForTaskToken · heartbeat 240s</text>
+
+  <rect x="1010" y="162" width="140" height="56" rx="2" fill="#CFE7DC" stroke="#1C7A55" stroke-width="2"/>
+  <text x="1080" y="195" font-size="13" font-weight="700" text-anchor="middle" fill="#101A1E">NextStep</text>
+
+  <!-- relay row -->
+  <rect x="620" y="270" width="260" height="70" rx="2" fill="#EDF1F2" stroke="#3D4C53" stroke-width="1.5"/>
+  <text x="750" y="298" font-size="13" font-weight="700" text-anchor="middle" fill="#101A1E">API Gateway → relay λ</text>
+  <text x="750" y="318" font-size="10" text-anchor="middle" fill="#3D4C53">SendTaskSuccess / Failure / Heartbeat</text>
+
+  <rect x="1010" y="270" width="140" height="60" rx="2" fill="#F3D8D5" stroke="#AC3128" stroke-width="2"/>
+  <text x="1080" y="295" font-size="13" font-weight="700" text-anchor="middle" fill="#101A1E">JobFailed</text>
+  <text x="1080" y="313" font-size="10" text-anchor="middle" fill="#3D4C53">traceback as cause</text>
+
+  <!-- fallback row -->
+  <rect x="600" y="390" width="170" height="70" rx="2" fill="#F2E3C8" stroke="#A96A12" stroke-width="1.5"/>
+  <text x="685" y="419" font-size="13" text-anchor="middle" fill="#101A1E">FindRun</text>
+  <text x="685" y="438" font-size="10" text-anchor="middle" fill="#3D4C53">run_id by job name</text>
+
+  <rect x="810" y="390" width="170" height="70" rx="2" fill="#F2E3C8" stroke="#A96A12" stroke-width="1.5"/>
+  <text x="895" y="415" font-size="13" text-anchor="middle" fill="#101A1E">PollUntilComplete</text>
+  <text x="895" y="434" font-size="10" text-anchor="middle" fill="#3D4C53">reusable poller</text>
+  <text x="895" y="448" font-size="10" text-anchor="middle" fill="#3D4C53">every 30s</text>
+
+  <!-- wherobots lane -->
+  <rect x="260" y="536" width="230" height="100" rx="2" fill="#FFFFFF" stroke="#3D4C53" stroke-width="2"/>
+  <text x="375" y="564" font-size="14" font-weight="700" text-anchor="middle" fill="#101A1E">Wherobots job</text>
+  <text x="375" y="584" font-size="10.5" text-anchor="middle" fill="#3D4C53">Apache Sedona · managed Spark</text>
+  <text x="375" y="600" font-size="10.5" text-anchor="middle" fill="#3D4C53">try: work → success</text>
+  <text x="375" y="616" font-size="10.5" text-anchor="middle" fill="#3D4C53">except: failure · heartbeat 60s</text>
+
+  <defs>
+    <marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#3D4C53"/></marker>
+    <marker id="teal" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#0E5B69"/></marker>
+    <marker id="amber" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#A96A12"/></marker>
+    <marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#AC3128"/></marker>
+  </defs>
+
+  <!-- Prev -> Submit -->
+  <line x1="210" y1="190" x2="254" y2="190" stroke="#3D4C53" stroke-width="1.8" marker-end="url(#ink)"/>
+
+  <!-- success callback: Submit -> NextStep -->
+  <line x1="540" y1="178" x2="1004" y2="178" stroke="#0E5B69" stroke-width="2.4" marker-end="url(#teal)"/>
+  <text x="772" y="168" font-size="12" font-weight="700" text-anchor="middle" fill="#0E5B69">success callback</text>
+
+  <!-- Submit -> Job: drop at x=300 -->
+  <line x1="300" y1="230" x2="300" y2="530" stroke="#3D4C53" stroke-width="1.8" marker-end="url(#ink)"/>
+  <text x="130" y="352" font-size="11" fill="#3D4C53">submit run with</text>
+  <text x="130" y="368" font-size="11" fill="#3D4C53">the task token →</text>
+
+  <!-- Job -> Relay: up at x=470, across above the fallback row, into relay bottom -->
+  <path d="M 470,536 L 470,422 A 8 8 0 0 1 470,406 L 470,372 L 660,372 L 660,346" fill="none" stroke="#0E5B69" stroke-width="2" marker-end="url(#teal)"/>
+  <text x="480" y="474" font-size="11" fill="#0E5B69">POST {token, result}</text>
+
+  <!-- Relay -> Submit (wake): left edge -> x520 -> up into submit bottom -->
+  <polyline points="614,300 520,300 520,236" fill="none" stroke="#0E5B69" stroke-width="2" marker-end="url(#teal)"/>
+  <text x="524" y="278" font-size="10.5" fill="#0E5B69">wakes the</text>
+  <text x="524" y="292" font-size="10.5" fill="#0E5B69">paused state</text>
+
+  <!-- failure callback: Submit bottom -> JobFailed (red), hop over wake vertical at x=520 -->
+  <path d="M 440,230 L 440,258 L 512,258 A 8 8 0 0 1 528,258 L 995,258 L 995,292 L 1004,292" fill="none" stroke="#AC3128" stroke-width="1.8" marker-end="url(#red)"/>
+  <text x="700" y="248" font-size="11" text-anchor="middle" fill="#AC3128">failure callback (traceback as cause)</text>
+
+  <!-- hard death: Submit bottom -> FindRun (amber dashed) -->
+  <polyline points="380,230 380,414 594,414" fill="none" stroke="#A96A12" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#amber)"/>
+  <text x="88" y="300" font-size="11" fill="#A96A12">heartbeats stopped (OOM) →</text>
+  <text x="88" y="316" font-size="11" fill="#A96A12">HeartbeatSeconds fires</text>
+
+  <!-- FindRun -> Poller -->
+  <line x1="770" y1="425" x2="804" y2="425" stroke="#A96A12" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#amber)"/>
+
+  <!-- Poller -> NextStep: up at x=940, hop over red horizontal -->
+  <path d="M 940,390 L 940,266 A 8 8 0 0 1 940,250 L 940,196 L 1004,196" fill="none" stroke="#A96A12" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#amber)"/>
+  <text x="932" y="368" font-size="10" text-anchor="end" fill="#A96A12">COMPLETED ↑</text>
+
+  <!-- Poller -> JobFailed: right edge -> x992 -> up -> left edge -->
+  <polyline points="980,442 992,442 992,310 1004,310" fill="none" stroke="#AC3128" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#red)"/>
+  <text x="976" y="478" font-size="10" text-anchor="end" fill="#AC3128">FAILED ↗</text>
+
+  <!-- legend -->
+  <g font-size="11" fill="#5B6577">
+    <line x1="48" y1="690" x2="76" y2="690" stroke="#0E5B69" stroke-width="2.4"/>
+    <text x="84" y="694">callback path (happy)</text>
+    <line x1="256" y1="690" x2="284" y2="690" stroke="#A96A12" stroke-width="1.8" stroke-dasharray="6 4"/>
+    <text x="292" y="694">fallback (hard death)</text>
+    <line x1="464" y1="690" x2="492" y2="690" stroke="#AC3128" stroke-width="1.8"/>
+    <text x="500" y="694">failure</text>
+    <text x="600" y="694">the single-use task token is the capability · no polling on the happy path</text>
+  </g>
+</svg>
