@@ -13,17 +13,16 @@ Return: {"run_id": "...", "status": "RUNNING", "is_terminal": false}
 """
 
 import os
-import subprocess
-import sys
 
-SDK_DIR = "/tmp/sdk"
-if not os.path.exists(SDK_DIR):
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "wherobots-python-sdk", "--target", SDK_DIR]
-    )
-sys.path.insert(0, SDK_DIR)
+import boto3
 
-from wherobots import WherobotsJob  # noqa: E402
+# API key from Secrets Manager at cold start — never in the function config.
+if "WHEROBOTS_API_KEY" not in os.environ:
+    os.environ["WHEROBOTS_API_KEY"] = boto3.client("secretsmanager").get_secret_value(
+        SecretId=os.environ["WHEROBOTS_API_KEY_SECRET_ARN"]
+    )["SecretString"]
+
+from wherobots import WherobotsJob  # noqa: E402  (vendored into the zip at deploy time)
 
 
 def lambda_handler(event, context):

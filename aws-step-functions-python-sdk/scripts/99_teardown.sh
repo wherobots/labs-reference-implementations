@@ -63,7 +63,7 @@ done
 echo
 echo "── IAM roles ──────────────────────────────────────────────────────────"
 run aws iam delete-role-policy --role-name "${RESOURCE_PREFIX}-lambda-role" \
-  --policy-name "${RESOURCE_PREFIX}-sendtask-policy"
+  --policy-name "${RESOURCE_PREFIX}-secret-policy"
 run aws iam detach-role-policy --role-name "${RESOURCE_PREFIX}-lambda-role" \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 run aws iam delete-role --role-name "${RESOURCE_PREFIX}-lambda-role"
@@ -76,6 +76,12 @@ run aws iam delete-role-policy --role-name "${RESOURCE_PREFIX}-sfn-role" \
   --policy-name "${RESOURCE_PREFIX}-sfn-policy"
 run aws iam delete-role --role-name "${RESOURCE_PREFIX}-sfn-role"
 
+echo
+echo "── Secrets Manager ────────────────────────────────────────────────────"
+run aws secretsmanager delete-secret \
+  --secret-id "${RESOURCE_PREFIX}-wherobots-api-key" \
+  --force-delete-without-recovery --query Name --output text
+
 if [ "$FAILED" -ne 0 ]; then
   echo
   echo "❌ Teardown INCOMPLETE — one or more delete calls failed (see above)."
@@ -85,7 +91,7 @@ fi
 
 echo
 echo "── Local state ────────────────────────────────────────────────────────"
-run rm -f .state.json lambdas/*.zip
+run rm -rf .state.json lambdas/*.zip lambdas/.build
 
 echo
 echo "✅ Teardown complete. (The uploaded job script in Wherobots storage is"

@@ -2,10 +2,14 @@
 # Step 2 — build the AWS infrastructure with plain AWS CLI calls.
 #
 # Creates (all names start with $RESOURCE_PREFIX):
-#   1 IAM role for the Lambdas          (basic execution + SendTask* so the
-#                                        callback relay can complete tasks)
+#   1 Secrets Manager secret            (the Wherobots API key — the Lambdas
+#                                        read it at cold start; it is never
+#                                        stored in a function's configuration)
+#   1 IAM role for the Lambdas          (basic execution + GetSecretValue on
+#                                        that one secret)
+#   1 IAM role for the callback relay   (basic execution + SendTask*)
 #   4 Lambda functions                  (submit, check-status, callback-relay
-#                                        + its public Function URL, find-run)
+#                                        behind an API Gateway HTTP API, find-run)
 #   1 IAM role for the state machines   (invoke the Lambdas + start the child
 #                                        poller execution + the EventBridge
 #                                        rule the .sync pattern requires)
@@ -51,16 +55,40 @@ TAG_PROJECT="aws-step-functions-python-sdk"
 TAG_CREATED_AT="$(date -u +%Y-%m-%d)"
 TAG_TEARDOWN_BY="$(python3 -c 'import datetime as d; print((d.date.today() + d.timedelta(days=30)).isoformat())')"
 # Same four tags, in each service's own CLI syntax
-IAM_TAGS=(Key=ManagedBy,Value=claude-code Key=Project,Value="$TAG_PROJECT" Key=CreatedAt,Value="$TAG_CREATED_AT" Key=TeardownBy,Value="$TAG_TEARDOWN_BY")
-LAMBDA_TAGS="ManagedBy=claude-code,Project=${TAG_PROJECT},CreatedAt=${TAG_CREATED_AT},TeardownBy=${TAG_TEARDOWN_BY}"
-SFN_TAGS=(key=ManagedBy,value=claude-code key=Project,value="$TAG_PROJECT" key=CreatedAt,value="$TAG_CREATED_AT" key=TeardownBy,value="$TAG_TEARDOWN_BY")
+IAM_TAGS=(Key=ManagedBy,Value=wherobots-labs Key=Project,Value="$TAG_PROJECT" Key=CreatedAt,Value="$TAG_CREATED_AT" Key=TeardownBy,Value="$TAG_TEARDOWN_BY")
+LAMBDA_TAGS="ManagedBy=wherobots-labs,Project=${TAG_PROJECT},CreatedAt=${TAG_CREATED_AT},TeardownBy=${TAG_TEARDOWN_BY}"
+SFN_TAGS=(key=ManagedBy,value=wherobots-labs key=Project,value="$TAG_PROJECT" key=CreatedAt,value="$TAG_CREATED_AT" key=TeardownBy,value="$TAG_TEARDOWN_BY")
 
 echo "── Who am I ──────────────────────────────────────────────────────────"
 run aws sts get-caller-identity --query Account --output text
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 echo
-echo "── 1/5 IAM role for the Lambdas ──────────────────────────────────────"
+echo "── 1/6 Secrets Manager: the Wherobots API key ────────────────────────"
+# The key lives in Secrets Manager, not in Lambda environment variables:
+# anyone with lambda:GetFunctionConfiguration could read a plain env var,
+# while the secret needs secretsmanager:GetSecretValue on this one ARN.
+SECRET_NAME="${RESOURCE_PREFIX}-wherobots-api-key"
+if SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" \
+    --query ARN --output text 2>/dev/null); then
+  # If a previous teardown's delete is still settling, restore first so the
+  # put below lands on a live secret (no-op error if it was never deleted).
+  quiet aws secretsmanager restore-secret --secret-id "$SECRET_NAME" || true
+  echo "▶ aws secretsmanager put-secret-value --secret-id $SECRET_NAME (secret hidden)"
+  aws secretsmanager put-secret-value --secret-id "$SECRET_NAME" \
+    --secret-string "$WHEROBOTS_API_KEY" --query VersionId --output text
+else
+  echo "▶ aws secretsmanager create-secret --name $SECRET_NAME (secret hidden)"
+  SECRET_ARN=$(aws secretsmanager create-secret --name "$SECRET_NAME" \
+    --description "Wherobots API key for the ${RESOURCE_PREFIX} reference pipeline" \
+    --secret-string "$WHEROBOTS_API_KEY" \
+    --tags "${IAM_TAGS[@]}" \
+    --query ARN --output text)
+fi
+echo "secret: $SECRET_ARN"
+
+echo
+echo "── 2/6 IAM role for the Lambdas ──────────────────────────────────────"
 TRUST_LAMBDA='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
 if quiet aws iam get-role --role-name "$LAMBDA_ROLE"; then
   echo "role $LAMBDA_ROLE already exists — skipping create"
@@ -73,24 +101,59 @@ else
 fi
 run aws iam attach-role-policy --role-name "$LAMBDA_ROLE" \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+# Read access to exactly one secret — the API key the SDK Lambdas fetch at
+# cold start. No other secret in the account is readable through this role.
+SECRET_POLICY=$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "secretsmanager:GetSecretValue",
+    "Resource": "${SECRET_ARN}"
+  }]
+}
+EOF
+)
+run aws iam put-role-policy --role-name "$LAMBDA_ROLE" \
+  --policy-name "${RESOURCE_PREFIX}-secret-policy" \
+  --policy-document "$SECRET_POLICY"
 LAMBDA_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${LAMBDA_ROLE}"
 
 echo
-echo "── 2/5 Package the Lambda handlers ───────────────────────────────────"
-run zip -j -q lambdas/submit.zip lambdas/submit/handler.py
-run zip -j -q lambdas/check_status.zip lambdas/check_status/handler.py
+echo "── 3/6 Package the Lambda handlers ───────────────────────────────────"
+# The SDK Lambdas get the pinned wherobots-python-sdk vendored into their
+# zips: no network install at cold start, reproducible code on every
+# instance. The relay needs only boto3, which the Lambda runtime provides.
+BUILD_DIR="lambdas/.build"
+rm -rf "$BUILD_DIR"
+echo
+echo "▶ pip install -r requirements.txt --target $BUILD_DIR (vendoring the pinned SDK)"
+python3 -m pip install --quiet --disable-pip-version-check \
+  -r requirements.txt --target "$BUILD_DIR" \
+  --platform manylinux2014_x86_64 --python-version 3.12 --only-binary=:all: \
+  || python3 -m pip install --quiet --disable-pip-version-check \
+       -r requirements.txt --target "$BUILD_DIR"
+package_fn() { # zipfile handler-file
+  local zipfile=$1 handler=$2
+  rm -f "$zipfile"
+  (cd "$BUILD_DIR" && zip -r -q "../../$zipfile" . -x '*.pyc' -x '*__pycache__*')
+  zip -j -q "$zipfile" "$handler"
+}
+run package_fn lambdas/submit.zip lambdas/submit/handler.py
+run package_fn lambdas/check_status.zip lambdas/check_status/handler.py
+run package_fn lambdas/find_run.zip lambdas/find_run/handler.py
 run zip -j -q lambdas/callback_relay.zip lambdas/callback_relay/handler.py
-run zip -j -q lambdas/find_run.zip lambdas/find_run/handler.py
 
 echo
-echo "── 3/5 Lambda functions ──────────────────────────────────────────────"
-# Environment maps are built as JSON so a secret containing '=' or ',' can
-# never reshape the CLI's shorthand-map parsing.
+echo "── 4/6 Lambda functions ──────────────────────────────────────────────"
+# Environment maps are built as JSON so a value containing '=' or ',' can
+# never reshape the CLI's shorthand-map parsing. The API key itself is NOT
+# here — only the ARN of the secret holding it.
 lambda_env_json() { # [extra_key extra_value]...
   python3 - "$@" <<'PY'
 import json, os, sys
 variables = {
-    "WHEROBOTS_API_KEY": os.environ["WHEROBOTS_API_KEY"],
+    "WHEROBOTS_API_KEY_SECRET_ARN": os.environ["SECRET_ARN"],
     "WHEROBOTS_REGION": os.environ.get("WHEROBOTS_REGION", "aws-us-west-2"),
 }
 extra = sys.argv[1:]
@@ -98,6 +161,7 @@ variables.update(dict(zip(extra[::2], extra[1::2])))
 print(json.dumps({"Variables": variables}))
 PY
 }
+export SECRET_ARN
 LAMBDA_ENV="$(lambda_env_json)"
 
 deploy_fn() { # name zipfile timeout memory [env] [role_arn]
@@ -179,17 +243,17 @@ deploy_fn "$RELAY_FN" lambdas/callback_relay.zip 30 256 '{"Variables":{"NOOP":"1
 echo
 echo "── API Gateway HTTP API for the callback relay ───────────────────────"
 # The relay is fronted by an API Gateway HTTP API rather than a Lambda
-# Function URL: many orgs (this one included) block anonymous
-# lambda:InvokeFunctionUrl via SCP, and API Gateway is the sanctioned way
-# to expose a public HTTPS endpoint. The unguessable single-use task token
-# remains the capability; production hardening adds an API key or WAF.
+# Function URL: many orgs block anonymous lambda:InvokeFunctionUrl via SCP,
+# and API Gateway is the widely-sanctioned way to expose a public HTTPS
+# endpoint. The unguessable single-use task token remains the capability;
+# production hardening adds an API key or WAF.
 RELAY_ARN="arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:${RELAY_FN}"
 API_NAME="${RESOURCE_PREFIX}-callback"
 API_ID=$(aws apigatewayv2 get-apis --query "Items[?Name=='${API_NAME}'].ApiId | [0]" --output text)
 if [ "$API_ID" = "None" ] || [ -z "$API_ID" ]; then
   run aws apigatewayv2 create-api --name "$API_NAME" --protocol-type HTTP \
     --target "$RELAY_ARN" \
-    --tags "ManagedBy=claude-code,Project=${TAG_PROJECT},CreatedAt=${TAG_CREATED_AT},TeardownBy=${TAG_TEARDOWN_BY}" \
+    --tags "ManagedBy=wherobots-labs,Project=${TAG_PROJECT},CreatedAt=${TAG_CREATED_AT},TeardownBy=${TAG_TEARDOWN_BY}" \
     --query ApiId --output text
   API_ID=$(aws apigatewayv2 get-apis --query "Items[?Name=='${API_NAME}'].ApiId | [0]" --output text)
 fi
@@ -208,6 +272,10 @@ if ! PERM_OUT=$(aws lambda add-permission --function-name "$RELAY_FN" \
     exit 1
   fi
 fi
+# Stage throttle: without it the only cap is the account-level API Gateway
+# limit, so anyone could flood the public endpoint and run up Lambda cost.
+run aws apigatewayv2 update-stage --api-id "$API_ID" --stage-name '$default' \
+  --default-route-settings '{"ThrottlingBurstLimit":10,"ThrottlingRateLimit":5}'
 CALLBACK_URL="https://${API_ID}.execute-api.${AWS_REGION}.amazonaws.com/"
 echo "callback URL: $CALLBACK_URL"
 
@@ -224,7 +292,7 @@ CHECK_ARN="arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:${CHECK_FN}"
 FIND_ARN="arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:${FIND_FN}"
 
 echo
-echo "── 4/5 IAM role for the state machines ───────────────────────────────"
+echo "── 5/6 IAM role for the state machines ───────────────────────────────"
 TRUST_SFN='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"states.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
 if quiet aws iam get-role --role-name "$SFN_ROLE"; then
   echo "role $SFN_ROLE already exists — skipping create"
@@ -269,7 +337,7 @@ run aws iam put-role-policy --role-name "$SFN_ROLE" \
 SFN_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${SFN_ROLE}"
 
 echo
-echo "── 5/5 Step Functions state machines ─────────────────────────────────"
+echo "── 6/6 Step Functions state machines ─────────────────────────────────"
 render() { # asl-file  (substitutes the ${...} placeholders)
   sed -e "s|\${CHECK_LAMBDA_ARN}|${CHECK_ARN}|" \
       -e "s|\${SUBMIT_LAMBDA_ARN}|${SUBMIT_ARN}|" \

@@ -1,8 +1,8 @@
 """Submit a Wherobots job run and return immediately with the run_id.
 
-Installs wherobots-python-sdk from PyPI into /tmp on cold start so the
-deployment needs no layers or containers (reference pattern — bake a
-Lambda layer for production).
+The SDK is vendored into the deployment zip at deploy time (pinned in
+requirements.txt), so cold starts run no network installs and every
+instance runs the same code.
 
 The event is the output of the previous Step Functions state:
     {"script": "s3://...", "job_name": "...", "runtime": "tiny"}
@@ -11,15 +11,16 @@ poller state machine, which has no 15-minute Lambda ceiling.
 """
 
 import os
-import subprocess
-import sys
 
-SDK_DIR = "/tmp/sdk"
-if not os.path.exists(SDK_DIR):
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "wherobots-python-sdk", "--target", SDK_DIR]
-    )
-sys.path.insert(0, SDK_DIR)
+import boto3
+
+# The Wherobots API key lives in Secrets Manager, never in the function's
+# configuration: fetched once per cold start into the process environment,
+# where the SDK reads it. Reading the function config shows only the ARN.
+if "WHEROBOTS_API_KEY" not in os.environ:
+    os.environ["WHEROBOTS_API_KEY"] = boto3.client("secretsmanager").get_secret_value(
+        SecretId=os.environ["WHEROBOTS_API_KEY_SECRET_ARN"]
+    )["SecretString"]
 
 from wherobots import WherobotsJob  # noqa: E402
 
@@ -45,7 +46,8 @@ def lambda_handler(event, context):
         runtime=data.get("runtime", "tiny"),
         region=os.environ.get("WHEROBOTS_REGION", "aws-us-west-2"),
         args=args,
-        # api_key is read from the WHEROBOTS_API_KEY env var on this function
+        # api_key: the SDK reads WHEROBOTS_API_KEY from the process env,
+        # populated above from Secrets Manager
     ) as job:
         run_id = job.submit()  # returns in seconds
 

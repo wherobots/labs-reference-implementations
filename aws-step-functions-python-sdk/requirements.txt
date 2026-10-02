@@ -1,4 +1,4 @@
-# Local requirements: only the upload step (scripts/01_upload_job.py) needs this.
-# The Lambdas install the SDK themselves from PyPI at cold start, and the
-# dashboard server is Python stdlib only.
-wherobots-python-sdk
+# Pinned: this exact version is what the upload step runs locally AND what
+# 02_deploy.sh vendors into the submit/check-status/find-run Lambda zips —
+# no network installs at Lambda cold start, every instance runs the same code.
+wherobots-python-sdk==0.4.0

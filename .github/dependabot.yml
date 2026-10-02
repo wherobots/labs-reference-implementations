@@ -1,0 +1,12 @@
+# Dependabot: keep the pinned Python dependency and the CI actions patched.
+# Required by the Wherobots Labs charter (automated dependency scanning).
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/aws-step-functions-python-sdk"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

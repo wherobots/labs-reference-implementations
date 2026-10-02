@@ -76,9 +76,9 @@ cd labs-reference-implementations/aws-step-functions-python-sdk
 ```
 
 Use a virtual environment so the Wherobots SDK doesn't pollute your system
-Python. `requirements.txt` holds the only local dependency
-(`wherobots-python-sdk`, used by the upload step — the dashboard server is
-stdlib-only, and the Lambdas install the SDK themselves from PyPI):
+Python. `requirements.txt` holds the only dependency, pinned
+(`wherobots-python-sdk`, used by the upload step and vendored into the
+Lambda zips at deploy time — the dashboard server is stdlib-only):
 
 ```bash
 python3 -m venv .venv
@@ -182,12 +182,35 @@ python3 scripts/01_upload_job.py   # upload job/hello_wherobots_job.py, save s3:
 | `scripts/` | Numbered lifecycle scripts (the dashboard runs these) |
 | `dashboard/` | Local control-plane server + guided UI |
 
+## Security model (read before exposing anything)
+
+- **The API key never sits in a Lambda env var.** The deploy stores it in
+  **Secrets Manager**; the Lambdas fetch it at cold start under a role that can
+  read exactly that one secret. Reading a function's configuration shows only
+  the secret's ARN.
+- **Dependencies are pinned and vendored.** `requirements.txt` pins
+  `wherobots-python-sdk`, and the deploy vendors it into the Lambda zips —
+  no network installs at cold start, every instance runs the same code.
+- **The callback relay is public by design, throttled, and capability-gated.**
+  The unguessable single-use task token is the auth; Step Functions rejects
+  anything else. The token travels as a plain job argument, so anyone who can
+  read that run's arguments in your Wherobots org (or your Step Functions
+  execution history) could post a forged callback for that one run — both
+  surfaces are already inside your trust boundary. The relay caps payload
+  size, returns generic errors (details go to CloudWatch), and the stage is
+  throttled (burst 10 / rate 5). For production add an authorizer or WAF.
+- **Callback output is treated as untrusted.** The dashboard HTML-escapes
+  every server-sourced value before rendering it.
+- **The dashboard only answers its own page.** Requests must carry a loopback
+  `Host` and (when present) a same-origin `Origin`; lifecycle scripts run only
+  via `POST` + `application/json`, so no other website can trigger a deploy,
+  teardown, or job run while the dashboard is up.
+
 ## Production notes (deliberately out of scope here)
 
-- Bake the SDK into a **Lambda layer** (`pip install wherobots-python-sdk -t python/ && zip -r layer.zip python`) instead of the cold-start pip install.
-- Put `WHEROBOTS_API_KEY` in **Secrets Manager**, not a Lambda env var.
 - Use IaC (Terraform / CDK / SAM) instead of CLI scripts.
 - Add `Catch` + alerting states around Submit and Poll.
+- Put an authorizer (API key / IAM) or WAF in front of the callback route.
 
 ## Cost
 
