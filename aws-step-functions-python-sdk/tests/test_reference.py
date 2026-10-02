@@ -220,6 +220,16 @@ class TestDashboardRequestGate(unittest.TestCase):
             body='{"script":"teardown"}')
         self.assertEqual(status, 415)
 
+    def test_json_null_body_gets_a_response_not_a_hang(self):
+        # json.loads("null") is None; the handler must still answer with a 400
+        # rather than treating it as already-responded and leaving the client
+        # waiting on an HTTP/1.1 connection.
+        status, _ = self._request(
+            "POST", "/api/exec", {"Host": f"127.0.0.1:{self.port}",
+                                  "Content-Type": "application/json"},
+            body="null")
+        self.assertEqual(status, 400)
+
     def test_exec_post_unknown_script_is_rejected(self):
         status, _ = self._request(
             "POST", "/api/exec", {"Host": f"127.0.0.1:{self.port}",

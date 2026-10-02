@@ -141,6 +141,14 @@ EOF
 run aws iam put-role-policy --role-name "$LAMBDA_ROLE" \
   --policy-name "${RESOURCE_PREFIX}-secret-policy" \
   --policy-document "$SECRET_POLICY"
+# Upgrade path: earlier versions attached SendTask* to this shared role before
+# the relay got its own. Remove the legacy policy so a redeploy over an old
+# stack actually sheds the excess permission (no-op on a fresh account).
+if quiet aws iam get-role-policy --role-name "$LAMBDA_ROLE" \
+    --policy-name "${RESOURCE_PREFIX}-sendtask-policy"; then
+  run aws iam delete-role-policy --role-name "$LAMBDA_ROLE" \
+    --policy-name "${RESOURCE_PREFIX}-sendtask-policy"
+fi
 LAMBDA_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${LAMBDA_ROLE}"
 
 echo

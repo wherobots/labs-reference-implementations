@@ -248,17 +248,23 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def json_body(self):
-        """Parse a POST body; None (after a 415/400 response) if not JSON."""
+        """Parse a POST body into a dict; None means a 4xx response was already
+        sent. Non-object JSON (null, arrays, strings) is rejected here so None
+        can never be a legitimate parse result left without a response."""
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         if ctype != "application/json":
             self.send_json({"error": "Content-Type must be application/json"}, 415)
             return None
         try:
             length = int(self.headers.get("Content-Length") or 0)
-            return json.loads(self.rfile.read(length) or b"{}") if length else {}
+            parsed = json.loads(self.rfile.read(length) or b"{}") if length else {}
         except ValueError:
             self.send_json({"error": "invalid JSON body"}, 400)
             return None
+        if not isinstance(parsed, dict):
+            self.send_json({"error": "JSON body must be an object"}, 400)
+            return None
+        return parsed
 
     def do_GET(self):
         if not self.request_allowed():

@@ -64,6 +64,9 @@ echo
 echo "── IAM roles ──────────────────────────────────────────────────────────"
 run aws iam delete-role-policy --role-name "${RESOURCE_PREFIX}-lambda-role" \
   --policy-name "${RESOURCE_PREFIX}-secret-policy"
+# Legacy policy from pre-relay-role versions; "already gone" on current stacks.
+run aws iam delete-role-policy --role-name "${RESOURCE_PREFIX}-lambda-role" \
+  --policy-name "${RESOURCE_PREFIX}-sendtask-policy"
 run aws iam detach-role-policy --role-name "${RESOURCE_PREFIX}-lambda-role" \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 run aws iam delete-role --role-name "${RESOURCE_PREFIX}-lambda-role"
