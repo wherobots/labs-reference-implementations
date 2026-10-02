@@ -143,7 +143,7 @@ python3 scripts/01_upload_job.py   # upload job/hello_wherobots_job.py, save s3:
 3. The job runs `try: work; post success` / `except: post failure(traceback)`,
    with a daemon thread posting heartbeats every 60 s. `finally` only stops the
    heartbeat thread — never posts results.
-4. **Happy path**: the success callback (`{building_count: 1084}`) becomes the
+4. **Happy path**: the success callback (`{building_count: 1080}`) becomes the
    state output and **NextStep** runs immediately. **Soft failure**: the failure
    callback fails the task with the traceback as cause → `JobFailed`.
    **Hard death (OOM)**: heartbeats stop → `States.Timeout` after

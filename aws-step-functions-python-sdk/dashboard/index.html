@@ -456,7 +456,7 @@ footer { border-top: 1px solid var(--rule); padding-top: 18px;
 
   <footer>
     <div>Wherobots reference implementation · Step Functions callback pattern with poller fallback</div>
-    <div>Job: Overture buildings within 1 km of downtown Seattle (geodesic, EPSG:4326) · expected result 1,084</div>
+    <div>Job: Overture buildings within 1 km of downtown Seattle (geodesic, EPSG:4326) · expected ~1,080 (the exact count tracks the current Overture release)</div>
   </footer>
 </div>
 
@@ -600,7 +600,8 @@ let pollTimer = null, lastAutoStage = null;
 const MODE_NOTES = {
   normal: `<span class="lbl">What a normal run shows</span>
      The job counts Overture buildings, then posts a <b>success callback</b> — the paused state
-     wakes instantly and NextStep receives <code>{"building_count": 1084}</code>. The fallback
+     wakes instantly and NextStep receives <code>{"building_count": 1080}</code> (the exact
+     count tracks the current Overture release). The fallback
      stages never run: the timeline stays one teal group ending in green, and that absence is
      the point. Typically 1–3 minutes end to end — the slowest job start observed in testing was 52 s.`,
   soft: `<span class="lbl">What the soft-failure test shows</span>
