@@ -41,12 +41,13 @@ _BAD_REQUEST = {"error": "bad request"}
 def lambda_handler(event, context):
     try:
         body = event.get("body") or "{}"
-        if event.get("isBase64Encoded"):
-            body = base64.b64decode(body).decode()
-        if len(body) > MAX_BODY_BYTES:
-            logger.info("rejected oversize callback body (%d bytes)", len(body))
+        # Enforce the cap in BYTES, before any parsing: len() on a decoded
+        # string counts characters, and multibyte UTF-8 would sail under it.
+        raw = base64.b64decode(body) if event.get("isBase64Encoded") else body.encode()
+        if len(raw) > MAX_BODY_BYTES:
+            logger.info("rejected oversize callback body (%d bytes)", len(raw))
             return _resp(400, _BAD_REQUEST)
-        req = json.loads(body)
+        req = json.loads(raw)
         token = req["task_token"]
         action = req.get("action", "heartbeat")
 
