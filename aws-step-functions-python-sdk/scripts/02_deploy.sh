@@ -69,21 +69,45 @@ echo "── 1/6 Secrets Manager: the Wherobots API key ────────
 # anyone with lambda:GetFunctionConfiguration could read a plain env var,
 # while the secret needs secretsmanager:GetSecretValue on this one ARN.
 SECRET_NAME="${RESOURCE_PREFIX}-wherobots-api-key"
-if SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" \
-    --query ARN --output text 2>/dev/null); then
-  # If a previous teardown's delete is still settling, restore first so the
-  # put below lands on a live secret (no-op error if it was never deleted).
-  quiet aws secretsmanager restore-secret --secret-id "$SECRET_NAME" || true
-  echo "▶ aws secretsmanager put-secret-value --secret-id $SECRET_NAME (secret hidden)"
-  aws secretsmanager put-secret-value --secret-id "$SECRET_NAME" \
-    --secret-string "$WHEROBOTS_API_KEY" --query VersionId --output text
-else
+create_secret() {
   echo "▶ aws secretsmanager create-secret --name $SECRET_NAME (secret hidden)"
   SECRET_ARN=$(aws secretsmanager create-secret --name "$SECRET_NAME" \
     --description "Wherobots API key for the ${RESOURCE_PREFIX} reference pipeline" \
     --secret-string "$WHEROBOTS_API_KEY" \
     --tags "${IAM_TAGS[@]}" \
     --query ARN --output text)
+}
+put_secret() {
+  echo "▶ aws secretsmanager put-secret-value --secret-id $SECRET_NAME (secret hidden)"
+  aws secretsmanager put-secret-value --secret-id "$SECRET_NAME" \
+    --secret-string "$WHEROBOTS_API_KEY" --query VersionId --output text
+}
+# Three possible states: live (update in place), absent (create), or pending
+# deletion. A soft-deleted secret restores; teardown's force-delete cannot be
+# restored, so wait for the asynchronous deletion to finish and create fresh.
+DELETED_AT=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" \
+  --query DeletedDate --output text 2>/dev/null || echo "ABSENT")
+if [ "$DELETED_AT" = "ABSENT" ]; then
+  create_secret
+elif [ "$DELETED_AT" = "None" ]; then
+  SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --query ARN --output text)
+  put_secret
+elif quiet aws secretsmanager restore-secret --secret-id "$SECRET_NAME"; then
+  SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --query ARN --output text)
+  put_secret
+else
+  echo "secret $SECRET_NAME is mid force-delete — waiting for Secrets Manager to finish ..."
+  for attempt in $(seq 1 24); do
+    if ! quiet aws secretsmanager describe-secret --secret-id "$SECRET_NAME"; then
+      break
+    fi
+    sleep 5
+  done
+  if quiet aws secretsmanager describe-secret --secret-id "$SECRET_NAME"; then
+    echo "✗ secret $SECRET_NAME is still pending deletion after 2 minutes — retry the deploy shortly" >&2
+    exit 1
+  fi
+  create_secret
 fi
 echo "secret: $SECRET_ARN"
 
