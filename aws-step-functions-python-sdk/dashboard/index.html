@@ -7,8 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
+      integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH" crossorigin="anonymous">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+        integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp" crossorigin="anonymous"></script>
 <style>
 :root {
   --ground:      #F4F6F7;
@@ -454,7 +456,7 @@ footer { border-top: 1px solid var(--rule); padding-top: 18px;
 
   <footer>
     <div>Wherobots reference implementation · Step Functions callback pattern with poller fallback</div>
-    <div>Job: Overture buildings within 1 km of downtown Seattle (geodesic, EPSG:4326) · expected result 1,084</div>
+    <div>Job: Overture buildings within 1 km of downtown Seattle (geodesic, EPSG:4326) · expected ~1,080 (the exact count tracks the current Overture release)</div>
   </footer>
 </div>
 
@@ -462,7 +464,14 @@ footer { border-top: 1px solid var(--rule); padding-top: 18px;
 const $ = id => document.getElementById(id);
 let armedTeardown = false;
 
-function pill(cls, text) { return `<span class="pill ${cls}">${text}</span>`; }
+// Every server-sourced value is HTML-escaped before interpolation into
+// innerHTML. The success callback's output comes from the public relay, so
+// without this, {"x":"<img src=x onerror=...>"} in a job's callback would
+// execute in this page — which can call deploy/teardown.
+const esc = v => String(v ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function pill(cls, text) { return `<span class="pill ${cls}">${esc(text)}</span>`; }
 
 // Gating greys only the section's action button; the section itself stays
 // readable. The disabled button's tooltip names what is blocking it.
@@ -489,7 +498,7 @@ async function preflight() {
     <tr><td>WHEROBOTS_API_KEY</td><td>${pill(p.WHEROBOTS_API_KEY ? "ok" : "crit", p.WHEROBOTS_API_KEY ? "set (" + p.WHEROBOTS_API_KEY + ")" : "missing")}</td></tr>
     <tr><td>AWS credentials</td><td>${pill("info", p.aws_credentials)}</td></tr>
     <tr><td>Upload target</td><td>${pill("info", p.storage_target)}</td></tr>
-    <tr><td>Uploaded script</td><td>${p.uploaded ? pill("ok", "yes") + ` <span style="color:var(--ink-mute)">${p.uploaded}</span>` : pill("warn", "not yet")}</td></tr>
+    <tr><td>Uploaded script</td><td>${p.uploaded ? pill("ok", "yes") + ` <span style="color:var(--ink-mute)">${esc(p.uploaded)}</span>` : pill("warn", "not yet")}</td></tr>
     <tr><td>Infrastructure</td><td>${p.deployed ? pill("ok", "deployed") : pill("warn", "not yet")}</td></tr>`;
   $("prov-region").textContent = p.AWS_REGION;
   $("prov-target").textContent = p.storage_target;
@@ -498,33 +507,66 @@ async function preflight() {
 
   const ready = p.env_file && p.WHEROBOTS_API_KEY;
   setLocked("card-upload", !ready);
-  if (p.uploaded) { markDone("card-upload"); $("upload-status").innerHTML = `<b class="ok">✓ uploaded:</b> ${p.uploaded}`; }
+  if (p.uploaded) { markDone("card-upload"); $("upload-status").innerHTML = `<b class="ok">✓ uploaded:</b> ${esc(p.uploaded)}`; }
   setLocked("card-deploy", !p.uploaded);
   if (p.deployed) { markDone("card-deploy"); $("deploy-status").innerHTML = `<b class="ok">✓ deployed</b>`; }
   setLocked("card-run", !p.deployed);
   setLocked("card-teardown", !p.deployed);
 }
 
-// ── lifecycle scripts over SSE ───────────────────────────────────────────────
-function runScript(name, btnId, termId, statusId, doneMsg) {
+// ── lifecycle scripts, streamed over a POST ──────────────────────────────────
+// POST + JSON (not GET/EventSource): running a lifecycle script changes
+// state, and a GET was triggerable cross-origin by a plain <img> tag. The
+// response body is still SSE-format lines; this parses them from the fetch
+// stream.
+async function runScript(name, btnId, termId, statusId, doneMsg) {
   const btn = $(btnId), term = $(termId), status = $(statusId);
   btn.disabled = true; term.classList.add("open"); term.textContent = "";
   status.innerHTML = `<span class="spin"></span> running…`;
-  const es = new EventSource(`/api/exec?script=${name}`);
-  es.onmessage = e => {
+  const addLine = text => {
     const line = document.createElement("div");
-    if (e.data.startsWith("▶")) line.className = "cmd";
-    line.textContent = e.data;
+    if (text.startsWith("▶")) line.className = "cmd";
+    line.textContent = text;
     term.appendChild(line); term.scrollTop = term.scrollHeight;
   };
-  es.addEventListener("done", e => {
-    es.close(); btn.disabled = false;
-    const code = JSON.parse(e.data).exit_code;
+  const finish = code => {
+    btn.disabled = false;
     status.innerHTML = code === 0 ? `<b class="ok">✓ ${doneMsg}</b>`
-      : `<b class="err">✗ exited with code ${code} — see the streamed output below</b>`;
+      : `<b class="err">✗ exited with code ${esc(code)} — see the streamed output below</b>`;
     preflight();
-  });
-  es.onerror = () => { es.close(); btn.disabled = false; status.innerHTML = `<b class="err">✗ connection lost</b>`; };
+  };
+  try {
+    const resp = await fetch("/api/exec", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ script: name }),
+    });
+    if (!resp.ok || !resp.body) {
+      const err = await resp.json().catch(() => ({}));
+      btn.disabled = false;
+      status.innerHTML = `<b class="err">✗ ${esc(err.error || `HTTP ${resp.status}`)}</b>`;
+      return;
+    }
+    const reader = resp.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buf = "", exitCode = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {       // one SSE event per blank line
+        const block = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        const isDone = /^event: done$/m.test(block);
+        const data = block.split("\n").filter(l => l.startsWith("data: "))
+          .map(l => l.slice(6)).join("\n");
+        if (isDone) exitCode = JSON.parse(data).exit_code;
+        else addLine(data);
+      }
+    }
+    finish(exitCode ?? 1);
+  } catch (e) {
+    btn.disabled = false;
+    status.innerHTML = `<b class="err">✗ connection lost</b>`;
+  }
 }
 $("btn-upload").onclick = () => runScript("upload", "btn-upload", "term-upload", "upload-status", "uploaded");
 $("btn-deploy").onclick = () => runScript("deploy", "btn-deploy", "term-deploy", "deploy-status", "infrastructure ready — green to run");
@@ -558,7 +600,8 @@ let pollTimer = null, lastAutoStage = null;
 const MODE_NOTES = {
   normal: `<span class="lbl">What a normal run shows</span>
      The job counts Overture buildings, then posts a <b>success callback</b> — the paused state
-     wakes instantly and NextStep receives <code>{"building_count": 1084}</code>. The fallback
+     wakes instantly and NextStep receives <code>{"building_count": 1080}</code> (the exact
+     count tracks the current Overture release). The fallback
      stages never run: the timeline stays one teal group ending in green, and that absence is
      the point. Typically 1–3 minutes end to end — the slowest job start observed in testing was 52 s.`,
   soft: `<span class="lbl">What the soft-failure test shows</span>
@@ -586,10 +629,10 @@ $("btn-run").onclick = async () => {
     body: JSON.stringify({ force_fail: mode === "soft", hard_fail: mode === "hard" }),
   });
   const r = await resp.json();
-  if (r.error) { $("run-status").innerHTML = `<b class="err">✗ ${r.error}</b>`; $("btn-run").disabled = false; return; }
+  if (r.error) { $("run-status").innerHTML = `<b class="err">✗ ${esc(r.error)}</b>`; $("btn-run").disabled = false; return; }
   $("graph-card").style.display = "block";
   $("gantt-card").style.display = "block";
-  $("run-meta").innerHTML = `job ${r.job_name} · <a href="${r.console_url}" target="_blank">AWS console</a>` +
+  $("run-meta").innerHTML = `job ${esc(r.job_name)} · <a href="${esc(r.console_url)}" target="_blank" rel="noopener">AWS console</a>` +
     ` · <a href="https://cloud.wherobots.com/workloads" target="_blank">Wherobots Workload History</a>`;
   $("run-status").innerHTML = `<span class="spin"></span> running…`;
   lastAutoStage = null;
@@ -713,7 +756,7 @@ function updateGraph(d) {
 
 async function poll(arn) {
   const d = await (await fetch(`/api/execution?arn=${encodeURIComponent(arn)}`)).json();
-  if (d.error) { $("run-status").innerHTML = `<b class="err">poll error: ${d.error}</b>`; return; }
+  if (d.error) { $("run-status").innerHTML = `<b class="err">poll error: ${esc(d.error)}</b>`; return; }
   updateGraph(d);
   renderTimeline(d);
   syncLiveFile(d.stages);
@@ -722,15 +765,15 @@ async function poll(arn) {
   if (d.run_id || d.poller) {
     wb.style.display = "block";
     const p = d.poller || {};
-    wb.innerHTML = `<span class="lbl">Fallback engaged</span>Wherobots run <code>${d.run_id || "…"}</code>` +
-      ` · status <b>${p.wherobots_status || "…"}</b> · poller checks so far: ${p.checks ?? 0}`;
+    wb.innerHTML = `<span class="lbl">Fallback engaged</span>Wherobots run <code>${esc(d.run_id || "…")}</code>` +
+      ` · status <b>${esc(p.wherobots_status || "…")}</b> · poller checks so far: ${esc(p.checks ?? 0)}`;
   }
   const terminal = ["SUCCEEDED", "FAILED", "TIMED_OUT", "ABORTED"].includes(d.status);
   if (terminal) {
     clearInterval(pollTimer); $("btn-run").disabled = false;
     document.querySelectorAll("#card-run ol.files li").forEach(li => li.classList.remove("live"));
     $("run-status").innerHTML = d.status === "SUCCEEDED"
-      ? `<b class="ok">✓ pipeline SUCCEEDED — NextStep received: </b><code>${JSON.stringify(d.output && d.output.callback || d.output)}</code>`
+      ? `<b class="ok">✓ pipeline SUCCEEDED — NextStep received: </b><code>${esc(JSON.stringify(d.output && d.output.callback || d.output))}</code>`
       : `<b class="err">✗ pipeline ${d.status} — open the AWS console link for the cause (the job's traceback on a failure callback)</b>`;
   }
 }

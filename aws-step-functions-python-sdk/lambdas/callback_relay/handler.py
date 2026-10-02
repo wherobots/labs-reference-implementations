@@ -8,26 +8,46 @@ API endpoint instead and we relay:
   {"task_token": "...", "action": "failure",   "error": "...", "cause": "..."}
   {"task_token": "...", "action": "heartbeat"}
 
-Auth model (reference-grade): the endpoint (API Gateway HTTP API) is public and
-the unguessable, single-use task token is the capability — a request
-without a live token can do nothing. For production put this behind API
-Gateway with an API key or IAM auth.
+Trust model (reference-grade, documented so you can decide if it fits):
+the endpoint (API Gateway HTTP API) is public, throttled at the stage,
+and the unguessable, single-use task token is the capability — a request
+without a live token can do nothing (Step Functions rejects it). The
+token travels to the job as a plain job argument, so anyone who can read
+that run's arguments in your Wherobots organization (or the Step
+Functions execution history in your AWS account) could post a forged
+callback for that one run; both surfaces are already inside your trust
+boundary. `output` is therefore treated as untrusted downstream: the
+dashboard HTML-escapes it, and this relay caps its size. For production,
+add an authorizer (API key / IAM / WAF) in front of the route.
+
+Anonymous callers get generic errors; details go to CloudWatch logs only.
 """
 
 import base64
 import json
+import logging
 
 import boto3
 
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 sfn = boto3.client("stepfunctions")
+
+MAX_BODY_BYTES = 262144  # SendTaskSuccess output is capped at 256 KB anyway
+_BAD_REQUEST = {"error": "bad request"}
 
 
 def lambda_handler(event, context):
     try:
         body = event.get("body") or "{}"
-        if event.get("isBase64Encoded"):
-            body = base64.b64decode(body).decode()
-        req = json.loads(body)
+        # Enforce the cap in BYTES, before any parsing: len() on a decoded
+        # string counts characters, and multibyte UTF-8 would sail under it.
+        raw = base64.b64decode(body) if event.get("isBase64Encoded") else body.encode()
+        if len(raw) > MAX_BODY_BYTES:
+            logger.info("rejected oversize callback body (%d bytes)", len(raw))
+            return _resp(400, _BAD_REQUEST)
+        req = json.loads(raw)
         token = req["task_token"]
         action = req.get("action", "heartbeat")
 
@@ -42,10 +62,14 @@ def lambda_handler(event, context):
         elif action == "heartbeat":
             sfn.send_task_heartbeat(taskToken=token)
         else:
-            return _resp(400, {"error": f"unknown action '{action}'"})
+            logger.info("rejected unknown action %r", action)
+            return _resp(400, _BAD_REQUEST)
         return _resp(200, {"ok": True, "action": action})
-    except Exception as exc:  # invalid/expired token, malformed body, ...
-        return _resp(400, {"error": str(exc)})
+    except Exception:
+        # Invalid/expired token, malformed body, boto errors: log the detail,
+        # hand the anonymous caller nothing to learn from.
+        logger.exception("callback relay rejected a request")
+        return _resp(400, _BAD_REQUEST)
 
 
 def _resp(code, obj):

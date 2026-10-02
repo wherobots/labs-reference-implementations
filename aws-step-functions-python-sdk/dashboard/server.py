@@ -6,11 +6,13 @@ the whole lifecycle. Credentials live in .env and are only ever injected
 into subprocess environments on this machine — the browser never sees them
 (preflight returns masked values only).
 
-Endpoints:
+Endpoints (all gated on a loopback Host and a same-origin Origin header;
+state-changing ones are POST + application/json so no cross-origin page
+can fire them — see ALLOWED_HOSTS below):
   GET  /                      -> index.html
   GET  /api/preflight         -> .env / .state.json readiness report (masked)
-  GET  /api/exec?script=NAME  -> Server-Sent Events stream of a lifecycle
-                                 script's output (upload | deploy | teardown)
+  POST /api/exec {script}     -> SSE-format stream of a lifecycle script's
+                                 output (upload | deploy | teardown)
   POST /api/start             -> start a pipeline execution, returns its ARN
   GET  /api/execution?arn=ARN -> live digest: parent stage statuses, child
                                  poller progress, Wherobots run_id + status
@@ -31,6 +33,17 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 PORT = 8321
+
+# Cross-origin defense: the browser happily sends requests to 127.0.0.1 from
+# any website it is showing, so binding to loopback is not an access check.
+# Every request must carry a loopback Host (stops DNS rebinding, where an
+# attacker's domain resolves to 127.0.0.1 so their page can READ responses),
+# and any Origin header must be this dashboard itself (stops cross-site
+# writes). State-changing endpoints are POST + application/json only, which
+# no cross-origin page can send without a CORS preflight this server never
+# answers.
+ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}", "127.0.0.1", "localhost"}
+ALLOWED_ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 
 SCRIPTS = {
     "upload": ["python3", "scripts/01_upload_job.py"],
@@ -221,7 +234,41 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def request_allowed(self):
+        """Host + Origin gate — see ALLOWED_HOSTS above. 403s and returns False
+        on any cross-origin or rebound request."""
+        host = (self.headers.get("Host") or "").strip()
+        if host not in ALLOWED_HOSTS:
+            self.send_json({"error": "forbidden: bad Host"}, 403)
+            return False
+        origin = self.headers.get("Origin")
+        if origin and origin not in ALLOWED_ORIGINS:
+            self.send_json({"error": "forbidden: cross-origin request"}, 403)
+            return False
+        return True
+
+    def json_body(self):
+        """Parse a POST body into a dict; None means a 4xx response was already
+        sent. Non-object JSON (null, arrays, strings) is rejected here so None
+        can never be a legitimate parse result left without a response."""
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            self.send_json({"error": "Content-Type must be application/json"}, 415)
+            return None
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            parsed = json.loads(self.rfile.read(length) or b"{}") if length else {}
+        except ValueError:
+            self.send_json({"error": "invalid JSON body"}, 400)
+            return None
+        if not isinstance(parsed, dict):
+            self.send_json({"error": "JSON body must be an object"}, 400)
+            return None
+        return parsed
+
     def do_GET(self):
+        if not self.request_allowed():
+            return
         url = urlparse(self.path)
         if url.path in ("/", "/index.html"):
             body = (ROOT / "dashboard" / "index.html").read_bytes()
@@ -232,8 +279,6 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif url.path == "/api/preflight":
             self.handle_preflight()
-        elif url.path == "/api/exec":
-            self.handle_exec(parse_qs(url.query).get("script", [""])[0])
         elif url.path == "/api/source":
             rel = parse_qs(url.query).get("file", [""])[0]
             if rel not in VIEWABLE:
@@ -254,8 +299,19 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "not found"}, 404)
 
     def do_POST(self):
-        if urlparse(self.path).path == "/api/start":
-            self.handle_start()
+        if not self.request_allowed():
+            return
+        path = urlparse(self.path).path
+        if path == "/api/start":
+            body = self.json_body()
+            if body is not None:
+                self.handle_start(body)
+        elif path == "/api/exec":
+            # POST (never GET): a lifecycle script changes state, and a GET
+            # here was triggerable by a plain <img> tag on any website.
+            body = self.json_body()
+            if body is not None:
+                self.handle_exec(str(body.get("script", "")))
         else:
             self.send_json({"error": "not found"}, 404)
 
@@ -319,15 +375,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(f"data: {data}\n\n".encode())
         self.wfile.flush()
 
-    def handle_start(self):
+    def handle_start(self, body):
         env, state = load_env(), load_state()
         if not state.get("pipeline_arn") or not state.get("script_uri"):
             return self.send_json({"error": "upload + deploy must finish first"}, 400)
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-            body = json.loads(self.rfile.read(length) or b"{}") if length else {}
-        except ValueError:
-            body = {}
         job_name = "sfn-ref-" + time.strftime("%Y%m%d-%H%M%S")
         exec_input = json.dumps({
             "script": state["script_uri"],

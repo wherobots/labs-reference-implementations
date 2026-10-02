@@ -154,6 +154,99 @@ class TestCallbackDelivery(unittest.TestCase):
         self.assertEqual(self.posts[-1]["output"], {"building_count": 1084})
 
 
+class TestDashboardRequestGate(unittest.TestCase):
+    """Regression tests for the cross-origin hardening: the dashboard must
+    reject spoofed Hosts (DNS rebinding), foreign Origins, and any attempt to
+    run a lifecycle script via GET or a non-JSON POST."""
+
+    @classmethod
+    def setUpClass(cls):
+        import http.server
+        sys.path.insert(0, str(IMPL / "dashboard"))
+        import server as dashboard_server
+        cls.mod = dashboard_server
+        cls.httpd = http.server.ThreadingHTTPServer(
+            ("127.0.0.1", 0), dashboard_server.Handler)
+        cls.port = cls.httpd.server_address[1]
+        import threading
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        # The gate's allowlists are built from the canonical PORT constant;
+        # widen them to this test server's ephemeral port.
+        dashboard_server.ALLOWED_HOSTS.add(f"127.0.0.1:{cls.port}")
+        dashboard_server.ALLOWED_ORIGINS.add(f"http://127.0.0.1:{cls.port}")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+
+    def _request(self, method, path, headers=None, body=None):
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.request(method, path, body=body, headers=headers or {})
+        resp = conn.getresponse()
+        data = resp.read()
+        conn.close()
+        return resp.status, data
+
+    def test_spoofed_host_is_rejected(self):
+        status, _ = self._request(
+            "GET", "/api/preflight", {"Host": "attacker.example:8321"})
+        self.assertEqual(status, 403)
+
+    def test_foreign_origin_is_rejected(self):
+        status, _ = self._request(
+            "GET", "/api/preflight",
+            {"Host": f"127.0.0.1:{self.port}", "Origin": "https://evil.example"})
+        self.assertEqual(status, 403)
+
+    def test_same_origin_get_is_allowed(self):
+        status, _ = self._request(
+            "GET", "/api/preflight",
+            {"Host": f"127.0.0.1:{self.port}",
+             "Origin": f"http://127.0.0.1:{self.port}"})
+        self.assertEqual(status, 200)
+
+    def test_exec_via_get_is_gone(self):
+        status, _ = self._request(
+            "GET", "/api/exec?script=teardown", {"Host": f"127.0.0.1:{self.port}"})
+        self.assertEqual(status, 404)
+
+    def test_exec_post_requires_json_content_type(self):
+        # A cross-site form/fetch can send text/plain without preflight —
+        # it must be refused.
+        status, _ = self._request(
+            "POST", "/api/exec", {"Host": f"127.0.0.1:{self.port}",
+                                  "Content-Type": "text/plain"},
+            body='{"script":"teardown"}')
+        self.assertEqual(status, 415)
+
+    def test_json_null_body_gets_a_response_not_a_hang(self):
+        # json.loads("null") is None; the handler must still answer with a 400
+        # rather than treating it as already-responded and leaving the client
+        # waiting on an HTTP/1.1 connection.
+        status, _ = self._request(
+            "POST", "/api/exec", {"Host": f"127.0.0.1:{self.port}",
+                                  "Content-Type": "application/json"},
+            body="null")
+        self.assertEqual(status, 400)
+
+    def test_exec_post_unknown_script_is_rejected(self):
+        status, _ = self._request(
+            "POST", "/api/exec", {"Host": f"127.0.0.1:{self.port}",
+                                  "Content-Type": "application/json"},
+            body='{"script":"rm -rf"}')
+        self.assertEqual(status, 400)
+
+
+class TestPinnedRequirements(unittest.TestCase):
+    def test_sdk_version_is_pinned(self):
+        req = (IMPL / "requirements.txt").read_text()
+        for line in req.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                self.assertIn("==", line, f"unpinned requirement: {line}")
+
+
 class TestDrainBeforeWait(unittest.TestCase):
     def test_abandoned_reader_does_not_deadlock(self):
         """Regression test for the exec-lock deadlock: a child writing far past
